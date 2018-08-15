@@ -1,8 +1,4 @@
-from sklearn.svm import SVC
 from sklearn.externals import joblib
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier, BaggingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.naive_bayes import GaussianNB
 from sklearn.model_selection import KFold
 import pickle
 from keras.utils.np_utils import to_categorical
@@ -11,15 +7,12 @@ from keras.layers import  Dropout, Dense,Activation
 import copy
 import numpy as np
 import warnings
-
 warnings.filterwarnings("ignore")
 import os
-
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 切换CPU
 """
 分类器接口
 """
-
 
 class Classifier(object):
     """
@@ -92,13 +85,6 @@ class Classifier(object):
         """
         raise RuntimeError("need to implement!")
 
-    def train(self, train_x, train_y):
-        """
-        训练数据
-        :return:
-        """
-        raise RuntimeError("need to implement!")
-
 
 class SklearnClassifier(Classifier):
     """
@@ -143,14 +129,10 @@ class SklearnClassifier(Classifier):
         with open(self.classifier_model_path + '_class_num', 'rb') as r_class_num_file:
             self.class_num = pickle.load(r_class_num_file)
 
-    def train(self, train_x, train_y):
-        self.build_model()
-        self.fit(train_x, train_y)
-        self.save_model()
-
 
 class SVMClassifier(SklearnClassifier):
     def __init__(self, where_store_classifier_model=None, train_params=None):
+        from sklearn.svm import SVC
         if train_params is None:
             train_params = {'probability': True}
         else:
@@ -158,38 +140,44 @@ class SVMClassifier(SklearnClassifier):
         SklearnClassifier.__init__(self, where_store_classifier_model, train_params, SVC)
 
 
-class RFClassifier(SklearnClassifier):
+class RandomForestClassifier(SklearnClassifier):
     def __init__(self, where_store_classifier_model=None, train_params=None):
+        from sklearn.ensemble import RandomForestClassifier
         SklearnClassifier.__init__(self, where_store_classifier_model, train_params, RandomForestClassifier)
 
 
-class GBDTClassifier(SklearnClassifier):
+class GradientBoostingClassifier(SklearnClassifier):
     def __init__(self, where_store_classifier_model=None, train_params=None):
+        from sklearn.ensemble import GradientBoostingClassifier
         SklearnClassifier.__init__(self, where_store_classifier_model, train_params, GradientBoostingClassifier)
 
 
-class AdaClassifier(SklearnClassifier):
+class AdaBoostClassifier(SklearnClassifier):
     def __init__(self, where_store_classifier_model=None, train_params=None):
+        from sklearn.ensemble import AdaBoostClassifier
         SklearnClassifier.__init__(self, where_store_classifier_model, train_params, AdaBoostClassifier)
 
 
-class BagClassifier(SklearnClassifier):
+class BaggingClassifier(SklearnClassifier):
     def __init__(self, where_store_classifier_model=None, train_params=None):
+        from sklearn.ensemble import BaggingClassifier
         SklearnClassifier.__init__(self, where_store_classifier_model, train_params, BaggingClassifier)
 
 
-class LRClassifier(SklearnClassifier):
+class LogisticRegression(SklearnClassifier):
     def __init__(self, where_store_classifier_model=None, train_params=None):
+        from sklearn.linear_model import LogisticRegression
         SklearnClassifier.__init__(self, where_store_classifier_model, train_params, LogisticRegression)
 
 
-class NBClassifier(SklearnClassifier):
+class NaiveBayesClassifier(SklearnClassifier):
     def __init__(self, where_store_classifier_model=None, train_params=None):
+        from sklearn.naive_bayes import GaussianNB
         SklearnClassifier.__init__(self, where_store_classifier_model, train_params, GaussianNB)
 
 
 """
-DNN分类模型,该部分利用keras简单实现MLP
+DNN分类模型,该部分利用keras简单实现MLP分类
 """
 
 class SimpleMLPClassifer(Classifier):
@@ -265,13 +253,7 @@ class SimpleMLPClassifer(Classifier):
     def load_model(self):
         self.classifier_model = load_model(self.classifier_model_path)
 
-    def train(self, train_x, train_y):
-        self.build_model()
-        self.fit(train_x, train_y)
-        self.save_model()
-
-
-class KFolds_Training_Wrapper(Classifier):
+class KFolds_Classifier_Training_Wrapper(Classifier):
     '''
     对训练的分类器进行交叉式训练，是对原始分类器的扩展，可独立使用
     '''
@@ -432,16 +414,6 @@ class KFolds_Training_Wrapper(Classifier):
             new_classifier.load_model()
             self.extend_classifiers.append(new_classifier)
 
-    def train(self, train_x=None, train_y=None):
-        """
-        训练数据
-        :return:
-        """
-        self.build_model()
-        self.fit(train_x, train_y)
-        self.save_model()
-
-
 class StackingClassifier(Classifier):
     def __init__(self, base_classifiers=list(), meta_classifier=None, use_probas=True, force_cv=True):
         """
@@ -462,10 +434,10 @@ class StackingClassifier(Classifier):
         self._suffix_for_cv = None  # 被KFolds_Training_Warpper包装时,存放添加的后缀
         if self.force_cv:
             for index in range(0, len(self.base_classifiers)):
-                if not isinstance(self.base_classifiers[index], KFolds_Training_Wrapper):
-                    self.base_classifiers[index] = KFolds_Training_Wrapper(self.base_classifiers[index])
-            if not isinstance(self.meta_classifier, KFolds_Training_Wrapper):
-                self.meta_classifier = KFolds_Training_Wrapper(self.meta_classifier)
+                if not isinstance(self.base_classifiers[index], KFolds_Classifier_Training_Wrapper):
+                    self.base_classifiers[index] = KFolds_Classifier_Training_Wrapper(self.base_classifiers[index])
+            if not isinstance(self.meta_classifier, KFolds_Classifier_Training_Wrapper):
+                self.meta_classifier = KFolds_Classifier_Training_Wrapper(self.meta_classifier)
 
     def _build_base_classifier_models(self):
         """
@@ -510,8 +482,6 @@ class StackingClassifier(Classifier):
     def _fit_meta_classifier(self):
         """
         训练元分类器
-        :param train_x:
-        :param train_y:
         :return:
 
         """
@@ -618,7 +588,7 @@ class StackingClassifier(Classifier):
             test_x)) if self.use_probas else self.meta_classifier.predict_categorical_proba(
             self._combine_base_classifier_predict_categorical(test_x))
 
-    def save_base_classifier_models(self):
+    def _save_base_classifier_models(self):
         """
         保存基分类器
         :return:
@@ -626,7 +596,7 @@ class StackingClassifier(Classifier):
         for classifier in self.base_classifiers:
             classifier.save_model()
 
-    def save_meta_classifier_model(self):
+    def _save_meta_classifier_model(self):
         """
         保存元分类器
         :return:
@@ -638,8 +608,8 @@ class StackingClassifier(Classifier):
         保存所有分类器
         :return:
         """
-        self.save_base_classifier_models()
-        self.save_meta_classifier_model()
+        self._save_base_classifier_models()
+        self._save_meta_classifier_model()
 
     def _load_base_classifier_models(self):
         """
@@ -672,8 +642,3 @@ class StackingClassifier(Classifier):
         """
         self._load_base_classifier_models()
         self._load_meta_classifier_model()
-
-    def train(self, train_x, train_y):
-        self.build_model()
-        self.fit(train_x, train_y)
-        self.save_model()

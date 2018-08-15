@@ -1,4 +1,4 @@
-from stacking_classifer import *
+from stacking_classifier import *
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
 from sklearn.datasets import load_digits
@@ -25,7 +25,7 @@ predict_categorical:预测分类的one-hot形式标签
 predict_categorical_proba:预测分类的one-hot形式概率分布
 predict_proba:预测二分类正样的概率值,多分类与predict_categorical_proba一样
 '''
-classifier = AdaClassifier(where_store_classifier_model='./classifier_model/demo1_ada.model')
+classifier = AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo1_ada.model')
 classifier.build_model()
 classifier.fit(X_train, y_train)
 p_test = classifier.predict(X_test)
@@ -42,15 +42,15 @@ print('demo1-2 mlp: ', f1_score(y_test, p_test, average='macro'))
 #demo2:交叉训练包装器,包装后依然当作Classifer使用，所以可以无限包装，但分类器数量会指数增涨
 该部分主要为Stacking分类的cv提供协助,独立使用的例子如下:
 '''
-classifier = RFClassifier(where_store_classifier_model='./classifier_model/demo2_1_rf.model')
-classifier = KFolds_Training_Wrapper(classifier)  # 默认2-fold,可指定KFolds_Training_Wrapper(classifier,k_fold=5)
+classifier = RandomForestClassifier(where_store_classifier_model='./classifier_model/demo2_1_rf.model')
+classifier = KFolds_Classifier_Training_Wrapper(classifier)  # 默认2-fold,可指定KFolds_Training_Wrapper(classifier,k_fold=5)
 classifier.build_model()
 classifier.fit(X_train, y_train)
 p_test = classifier.predict(X_test)
 print('demo2-1 rf : ', f1_score(y_test, p_test, average='macro'))
 
-classifier = RFClassifier(where_store_classifier_model='./classifier_model/demo2_2_rf.model')
-classifier = KFolds_Training_Wrapper(KFolds_Training_Wrapper(classifier, k_fold=5), k_fold=5)  # 这样会训练25个分类器
+classifier = RandomForestClassifier(where_store_classifier_model='./classifier_model/demo2_2_rf.model')
+classifier = KFolds_Classifier_Training_Wrapper(KFolds_Classifier_Training_Wrapper(classifier, k_fold=5), k_fold=5)  # 这样会训练25个分类器
 classifier.build_model()
 classifier.fit(X_train, y_train)
 p_test = classifier.predict(X_test)
@@ -70,15 +70,15 @@ demo3-1:比如利用RF,Ada,Bag,SVM作为基分类器,LR作为元分类器做集�
 '''
 classifier = StackingClassifier(
     base_classifiers=[
-        RFClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_rf_stack_cv.model'),
-        AdaClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_ada_stack_cv.model'),
-        BagClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_bag_stack_cv.model'),
+        RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_rf_stack_cv.model'),
+        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_ada_stack_cv.model'),
+        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_bag_stack_cv.model'),
         SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_svm_stack_cv.model'),
     ],
-    meta_classifier=LRClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_1_lr_stack_cv.model'),
+    meta_classifier=LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_1_layer_1_lr_stack_cv.model'),
 )
-classifier.train(train_x=X_train, train_y=y_train)
-classifier.load_model()
+classifier.build_model()
+classifier.fit(train_x=X_train, train_y=y_train)
 p_test = classifier.predict(X_test)
 print('demo3-1 simple stack: ', f1_score(y_test, p_test, average='macro'))
 '''
@@ -86,17 +86,17 @@ demo3-2:单独为某些分类器包装KFolds_Training_Wrapper时,设置force_cv=
 '''
 classifier = StackingClassifier(
     base_classifiers=[
-        KFolds_Training_Wrapper(
-            RFClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_rf_stack_cv.model'),
+        KFolds_Classifier_Training_Wrapper(
+            RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_rf_stack_cv.model'),
             k_fold=5),  # 仅该基分类器使用CV方式训练
-        AdaClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_ada_stack_cv.model'),
-        BagClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_bag_stack_cv.model'),
+        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_ada_stack_cv.model'),
+        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_bag_stack_cv.model'),
         SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_svm_stack_cv.model'),
     ],
-    meta_classifier=LRClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_1_lr_stack_cv.model'),
+    meta_classifier=LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_2_layer_1_lr_stack_cv.model'),
 )
-classifier.train(train_x=X_train, train_y=y_train)
-classifier.load_model()
+classifier.build_model()
+classifier.fit(train_x=X_train, train_y=y_train)
 p_test = classifier.predict(X_test)
 print('demo3-2 simple stack: ', f1_score(y_test, p_test, average='macro'))
 '''
@@ -104,16 +104,16 @@ demo3-3:StackingClassifier也可以作为基分类器使用,所以可以堆叠�
 '''
 classifier = StackingClassifier(
     base_classifiers=[
-        RFClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_rf_stack_cv.model'),
-        AdaClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_ada_stack_cv.model'),
-        BagClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_bag_stack_cv.model'),
+        RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_rf_stack_cv.model'),
+        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_ada_stack_cv.model'),
+        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_bag_stack_cv.model'),
         SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_svm_stack_cv.model'),
         StackingClassifier(
             base_classifiers=[
-                LRClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_3_lr_stack_cv.model'),
-                RFClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_3_rf_stack_cv.model'),
+                LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_3_layer_3_lr_stack_cv.model'),
+                RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_3_rf_stack_cv.model'),
             ],
-            meta_classifier=GBDTClassifier(
+            meta_classifier=GradientBoostingClassifier(
                 where_store_classifier_model='./classifier_model/demo_3_3_layer_3_gbdt_stack_cv.model'),
         )
     ],
@@ -121,33 +121,33 @@ classifier = StackingClassifier(
         where_store_classifier_model='./classifier_model/demo_3_3_layer_1_lr_stack_cv.model',
         train_params={'input_num': 50, 'class_num': 10}),
 )
-classifier.train(train_x=X_train, train_y=y_train)
-classifier.load_model()
+classifier.build_model()
+classifier.fit(train_x=X_train, train_y=y_train)
 p_test = classifier.predict(X_test)
 print('demo3-3 deep stack: ', f1_score(y_test, p_test, average='macro'))
 
 '''
 demo3-4:StackingClassifier也可以被KFolds_Training_Wrapper包装
 '''
-classifier = KFolds_Training_Wrapper(StackingClassifier(
+classifier = KFolds_Classifier_Training_Wrapper(StackingClassifier(
     base_classifiers=[
-        RFClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_rf_stack_cv.model'),
-        AdaClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_ada_stack_cv.model'),
-        BagClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_bag_stack_cv.model'),
+        RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_rf_stack_cv.model'),
+        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_ada_stack_cv.model'),
+        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_bag_stack_cv.model'),
         SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_svm_stack_cv.model'),
         StackingClassifier(
             base_classifiers=[
-                LRClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_3_lr_stack_cv.model'),
-                RFClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_3_rf_stack_cv.model'),
+                LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_4_layer_3_lr_stack_cv.model'),
+                RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_3_rf_stack_cv.model'),
             ],
-            meta_classifier=GBDTClassifier(
+            meta_classifier=GradientBoostingClassifier(
                 where_store_classifier_model='./classifier_model/demo_3_4_layer_3_gbdt_stack_cv.model')
         )
     ],
-    meta_classifier=LRClassifier(
+    meta_classifier=LogisticRegression(
         where_store_classifier_model='./classifier_model/demo_3_4_layer_1_lr_stack_cv.model'),
 ))
-classifier.train(train_x=X_train, train_y=y_train)
-classifier.load_model()
+classifier.build_model()
+classifier.fit(train_x=X_train, train_y=y_train)
 p_test = classifier.predict(X_test)
 print('demo3-4 deep deep stack: ', f1_score(y_test, p_test, average='macro'))
