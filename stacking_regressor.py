@@ -263,7 +263,7 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
 
     def _extract_k_fold_data_features(self):
         """
-        抽取交叉分割数据后的预测结果
+        抽取每个回归器的预测结果,并组合
         :return:
         """
         regression_results = []
@@ -393,11 +393,11 @@ class StackingRegressor(Regressor):
         :return:
         """
         self._fit_base_regressors(train_x, train_y)
-        self.meta_train_x = self._get_base_regressor_training_data(train_x)
+        self.meta_train_x = self._get_base_regressors_training_data(train_x)
         self.meta_train_y = train_y
         self._fit_meta_regressor()
 
-    def _get_base_regressor_training_data(self, train_x):
+    def _get_base_regressors_training_data(self, train_x):
         """
         获取基回归器的训练数据
         :return:
@@ -405,10 +405,10 @@ class StackingRegressor(Regressor):
         _all_regression_results = []
         for regressor in self.base_regressors:
             try:
-                current_results = regressor._extract_k_fold_data_features()  # 使用KFolds_Regressor_Training_wrapper包装过的回归器会调用该api
+                current_regressor_result = regressor._extract_k_fold_data_features()  # 使用KFolds_Regressor_Training_wrapper包装过的回归器会调用该api
             except:
-                current_results = regressor.predict(train_x)
-            _all_regression_results.append(current_results.reshape(-1,1))
+                current_regressor_result = regressor.predict(train_x)
+            _all_regression_results.append(current_regressor_result.reshape(-1,1))
         return np.concatenate(_all_regression_results, axis=-1)
 
     def _combine_base_regressor_predict(self, test_x=None):
