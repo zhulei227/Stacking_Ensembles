@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 diabetes = datasets.load_diabetes()
 X = diabetes.data
 y = diabetes.target
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=227)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=227)
 
 
 ''''
@@ -35,14 +35,14 @@ print('demo1-2 mlp: ', mean_squared_error(y_test, p_test))
 该部分主要为Stacking回归的cv提供协助,独立使用的例子如下:
 '''
 regressor = ElasticNetCV(where_store_regressor_model='./regressor_model/demo2_1_en.model')
-regressor = KFolds_Regressor_Training_Wrapper(regressor)  # 默认2-fold,可指定KFolds_Regressor_Training_Wrapper(regressor,k_fold=5)
+regressor = KFolds_Regressor_Training_Wrapper(regressor)  # 默认5-fold,可指定KFolds_Regressor_Training_Wrapper(regressor,k_fold=8)
 regressor.build_model()
 regressor.fit(X_train, y_train)
 p_test = regressor.predict(X_test)
 print('demo2-1 rf : ', mean_squared_error(y_test, p_test))
 
 regressor = ElasticNetCV(where_store_regressor_model='./regressor_model/demo2_2_en.model')
-regressor = KFolds_Regressor_Training_Wrapper(KFolds_Regressor_Training_Wrapper(regressor, k_fold=2), k_fold=2)  # 这样会训练4个回归器
+regressor = KFolds_Regressor_Training_Wrapper(KFolds_Regressor_Training_Wrapper(regressor, k_fold=8), k_fold=8)  # 这样会训练64个回归器
 regressor.build_model()
 regressor.fit(X_train, y_train)
 p_test = regressor.predict(X_test)
@@ -53,7 +53,7 @@ demo3:Stacking集成回归器的使用:Stacking回归器可以利用其它回归
 创建方式：regressor=StackRegressor(base_regressors,meta_regressor,use_probas=True, force_cv=True)
 base_classifers:基回归器列表
 meta_regressor:元回归器
-force_cv:是否强制为每个基回归器和元回归器添加KFolds_Training_Wrapper包装,默认添加(如果已经包装的不会再包装),个别回归器不想使用CV方式训练，可以定义force_cv=False,然后单独定义每个基回归器和元回归器
+force_cv:是否强制为每个基回归器和元回归器添加KFolds_Training_Wrapper包装,默认添加(如果已经包装的不会再包装),个别回归器不想使用CV方式训练，可以定义force_cv=False,然后单独定义每个基回归器和元回归器(训练数据较少的情况下,建议单独对最后一层进行操作或提高KFolds_Training_Wrapper的k_fold数)
 '''
 
 '''
@@ -66,8 +66,7 @@ regressor = StackingRegressor(
         BaggingRegressor(where_store_regressor_model='./regressor_model/demo_3_1_layer_2_bag_stack_cv.model'),
         SVRRegressor(where_store_regressor_model='./regressor_model/demo_3_1_layer_2_svr_stack_cv.model'),
     ],
-    meta_regressor=LinearRegression(where_store_regressor_model='./regressor_model/demo_3_1_layer_1_lr_stack_cv.model'),
-)
+    meta_regressor=LinearRegression(where_store_regressor_model='./regressor_model/demo_3_1_layer_1_lr_stack_cv.model'))
 regressor.build_model()
 regressor.fit(train_x=X_train, train_y=y_train)
 p_test = regressor.predict(X_test)
@@ -84,7 +83,8 @@ regressor = StackingRegressor(
         BaggingRegressor(where_store_regressor_model='./regressor_model/demo_3_2_layer_2_bag_stack_cv.model'),
         SVRRegressor(where_store_regressor_model='./regressor_model/demo_3_2_layer_2_svr_stack_cv.model'),
     ],
-    meta_regressor=LinearRegression(where_store_regressor_model='./regressor_model/demo_3_2_layer_1_lr_stack_cv.model'),
+    meta_regressor=KFolds_Regressor_Training_Wrapper(LinearRegression(where_store_regressor_model='./regressor_model/demo_3_2_layer_1_lr_stack_cv.model'),k_fold=5),
+    force_cv=True
 )
 regressor.build_model()
 regressor.fit(train_x=X_train, train_y=y_train)
@@ -108,9 +108,7 @@ regressor = StackingRegressor(
                 where_store_regressor_model='./regressor_model/demo_3_3_layer_3_gbdt_stack_cv.model'),
         )
     ],
-    meta_regressor=LinearRegression(
-        where_store_regressor_model='./regressor_model/demo_3_3_layer_1_lr_stack_cv.model'),
-)
+    meta_regressor=LinearRegression(where_store_regressor_model='./regressor_model/demo_3_3_layer_1_lr_stack_cv.model'))
 regressor.build_model()
 regressor.fit(train_x=X_train, train_y=y_train)
 p_test = regressor.predict(X_test)
@@ -134,8 +132,7 @@ regressor = KFolds_Regressor_Training_Wrapper(StackingRegressor(
                 where_store_regressor_model='./regressor_model/demo_3_4_layer_3_gbdt_stack_cv.model')
         )
     ],
-    meta_regressor=LinearRegression(
-        where_store_regressor_model='./regressor_model/demo_3_4_layer_1_lr_stack_cv.model'),
+    meta_regressor=LinearRegression(where_store_regressor_model='./regressor_model/demo_3_4_layer_1_lr_stack_cv.model'),
 ))
 regressor.build_model()
 regressor.fit(train_x=X_train, train_y=y_train)

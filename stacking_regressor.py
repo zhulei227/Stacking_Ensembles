@@ -214,7 +214,7 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
     对训练的回归器进行交叉式训练，是对原始回归器的扩展，可独立使用
     '''
 
-    def __init__(self, base_regressor=None, k_fold=2):
+    def __init__(self, base_regressor=None, k_fold=5):
         """
 
         :param base_regressor:

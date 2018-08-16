@@ -258,7 +258,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
     对训练的分类器进行交叉式训练，是对原始分类器的扩展，可独立使用
     '''
 
-    def __init__(self, base_classifer=None, k_fold=2):
+    def __init__(self, base_classifer=None, k_fold=5):
         """
 
         :param base_classifer:
