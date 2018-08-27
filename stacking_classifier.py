@@ -415,14 +415,16 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
             self.extend_classifiers.append(new_classifier)
 
 class StackingClassifier(Classifier):
-    def __init__(self, base_classifiers=list(), meta_classifier=None, use_probas=True, force_cv=True):
+    def __init__(self, base_classifiers=list(), meta_classifier=None, use_probas=True, force_cv=True,base_k_fold=5,meta_k_fold=5):
         """
         为cv训练方式提供更好的支持
 
-        :param classifiers: 基分类器
-        :param meta_classifier: 元分类器(基于基分类器的结果再次训练)
+        :param classifiers: 基分类器列表
+        :param meta_classifier: 元分类器(对基分类器的预测结果再次训练)
         :param use_probas: 基于基分类器的概率预测分布训练(默认使用类别标签的分布)
         :param force_cv 是否强制使用cv的方式训练所有基分类器以及元分类器(建议直接True),如果基分类器和未被KFolds_Training_Warpper包装,会被强制包装一次
+        :param base_k_fold:包装基分类器的k_fold
+        :param meta_k_fold:包装元分类器的k_fold
         """
         Classifier.__init__(self)
         self.base_classifiers = base_classifiers
@@ -435,9 +437,9 @@ class StackingClassifier(Classifier):
         if self.force_cv:
             for index in range(0, len(self.base_classifiers)):
                 if not isinstance(self.base_classifiers[index], KFolds_Classifier_Training_Wrapper):
-                    self.base_classifiers[index] = KFolds_Classifier_Training_Wrapper(self.base_classifiers[index])
+                    self.base_classifiers[index] = KFolds_Classifier_Training_Wrapper(self.base_classifiers[index],k_fold=base_k_fold)
             if not isinstance(self.meta_classifier, KFolds_Classifier_Training_Wrapper):
-                self.meta_classifier = KFolds_Classifier_Training_Wrapper(self.meta_classifier)
+                self.meta_classifier = KFolds_Classifier_Training_Wrapper(self.meta_classifier,k_fold=meta_k_fold)
 
     def _build_base_classifier_models(self):
         """

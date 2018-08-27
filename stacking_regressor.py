@@ -159,6 +159,60 @@ class BayesianRidge(SklearnRegressor):
         SklearnRegressor.__init__(self, where_store_regressor_model, train_params, BayesianRidge)
 
 
+class LightGBMRegressor(Regressor):
+    def __init__(self, where_store_regressor_model=None, train_params=None):
+        Regressor.__init__(self, where_store_regressor_model, train_params)
+        if self.train_params is None:
+            self.train_params = {
+                "objective": "regression",
+                "metric": "rmse",
+                "num_leaves": 40,
+                "learning_rate": 0.005,
+                "bagging_fraction": 0.6,
+                "feature_fraction": 0.6,
+                "bagging_frequency": 6,
+                "bagging_seed": 42,
+                "verbosity": -1,
+                "seed": 42
+            }
+
+    def build_model(self):
+        """
+        创建模型
+        :return:
+        """
+        raise RuntimeError("need to implement!")
+
+    def fit(self, train_x, train_y):
+        """
+        拟合数据
+        :return:
+        """
+        raise RuntimeError("need to implement!")
+
+    def predict(self, test_x):
+        """
+        预测结果
+        :param test_x:
+        :return:
+        """
+        raise RuntimeError("need to implement!")
+
+    def save_model(self):
+        """
+        存储模型
+        :return:
+        """
+        raise RuntimeError("need to implement!")
+
+    def load_model(self):
+        """
+        加载模型
+        :return:
+        """
+        raise RuntimeError("need to implement!")
+
+
 '''
 DNN回归模型,该部分利用keras简单实现MLP回归
 '''
@@ -315,13 +369,15 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
 
 
 class StackingRegressor(Regressor):
-    def __init__(self, base_regressors=list(), meta_regressor=None, force_cv=True):
+    def __init__(self, base_regressors=list(), meta_regressor=None, force_cv=True,base_k_fold=5,meta_k_fold=5):
         """
         为cv训练方式提供更好的支持
 
         :param regressors: 回归器
         :param meta_regressor: 元回归器(基于基回归器的结果再次训练)
         :param force_cv 是否强制使用cv的方式训练所有基回归器以及元回归器(建议直接True),如果基回归器和未被KFolds_Regreesor_Training_Warpper包装,会被强制包装一次
+        :param base_k_fold:基回归器的k_fold
+        :param meta_k_fold:元回归器的k_fold
         """
         Regressor.__init__(self)
         self.base_regressors = base_regressors
@@ -333,9 +389,9 @@ class StackingRegressor(Regressor):
         if self.force_cv:
             for index in range(0, len(self.base_regressors)):
                 if not isinstance(self.base_regressors[index], KFolds_Regressor_Training_Wrapper):
-                    self.base_regressors[index] = KFolds_Regressor_Training_Wrapper(self.base_regressors[index])
+                    self.base_regressors[index] = KFolds_Regressor_Training_Wrapper(self.base_regressors[index],k_fold=base_k_fold)
             if not isinstance(self.meta_regressor, KFolds_Regressor_Training_Wrapper):
-                self.meta_regressor = KFolds_Regressor_Training_Wrapper(self.meta_regressor)
+                self.meta_regressor = KFolds_Regressor_Training_Wrapper(self.meta_regressor,k_fold=meta_k_fold)
 
     def _build_base_regressor_models(self):
         """
@@ -408,7 +464,7 @@ class StackingRegressor(Regressor):
                 current_regressor_result = regressor._extract_k_fold_data_features()  # 使用KFolds_Regressor_Training_wrapper包装过的回归器会调用该api
             except:
                 current_regressor_result = regressor.predict(train_x)
-            _all_regression_results.append(current_regressor_result.reshape(-1,1))
+            _all_regression_results.append(current_regressor_result.reshape(-1, 1))
         return np.concatenate(_all_regression_results, axis=-1)
 
     def _combine_base_regressor_predict(self, test_x=None):
@@ -417,7 +473,7 @@ class StackingRegressor(Regressor):
         :param test_x:
         :return:
         """
-        _all_regression_results = [(regressor.predict(test_x)).reshape(-1,1) for regressor in self.base_regressors]
+        _all_regression_results = [(regressor.predict(test_x)).reshape(-1, 1) for regressor in self.base_regressors]
         return np.concatenate(_all_regression_results, axis=-1)
 
     def predict(self, test_x):

@@ -94,6 +94,7 @@ classifier = StackingClassifier(
         SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_svm_stack_cv.model'),
     ],
     meta_classifier=LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_2_layer_1_lr_stack_cv.model'),
+    force_cv=False
 )
 classifier.build_model()
 classifier.fit(train_x=X_train, train_y=y_train)
@@ -117,9 +118,8 @@ classifier = StackingClassifier(
                 where_store_classifier_model='./classifier_model/demo_3_3_layer_3_gbdt_stack_cv.model'),
         )
     ],
-    meta_classifier=SimpleMLPClassifer(
-        where_store_classifier_model='./classifier_model/demo_3_3_layer_1_lr_stack_cv.model',
-        train_params={'input_num': 50, 'class_num': 10}),
+    meta_classifier=LogisticRegression(
+        where_store_classifier_model='./classifier_model/demo_3_3_layer_1_lr_stack_cv.model'),
 )
 classifier.build_model()
 classifier.fit(train_x=X_train, train_y=y_train)
@@ -129,7 +129,7 @@ print('demo3-3 deep stack: ', f1_score(y_test, p_test, average='macro'))
 '''
 demo3-4:StackingClassifier也可以被KFolds_Training_Wrapper包装
 '''
-classifier = KFolds_Classifier_Training_Wrapper(StackingClassifier(
+classifier = StackingClassifier(
     base_classifiers=[
         RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_rf_stack_cv.model'),
         AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_ada_stack_cv.model'),
@@ -146,8 +146,26 @@ classifier = KFolds_Classifier_Training_Wrapper(StackingClassifier(
     ],
     meta_classifier=LogisticRegression(
         where_store_classifier_model='./classifier_model/demo_3_4_layer_1_lr_stack_cv.model'),
-))
+)
+classifier=KFolds_Classifier_Training_Wrapper(classifier)
 classifier.build_model()
 classifier.fit(train_x=X_train, train_y=y_train)
 p_test = classifier.predict(X_test)
 print('demo3-4 deep deep stack: ', f1_score(y_test, p_test, average='macro'))
+
+
+
+classifier = StackingClassifier(
+    base_classifiers=[
+        RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_rf_stack_cv.model'),
+        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_ada_stack_cv.model'),
+        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_bag_stack_cv.model'),
+        SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_svm_stack_cv.model'),
+        SimpleMLPClassifer(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_mlp_stack_cv.model',train_params={'input_num':64,'class_num':10})
+    ],
+    meta_classifier=LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_4_layer_1_lr_stack_cv.model'),
+)
+classifier.build_model()
+classifier.fit(train_x=X_train, train_y=y_train)
+p_test = classifier.predict(X_test)
+print('demo3-4 simple stack: ', f1_score(y_test, p_test, average='macro'))
