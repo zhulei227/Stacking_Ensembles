@@ -159,21 +159,26 @@ class BayesianRidge(SklearnRegressor):
         SklearnRegressor.__init__(self, where_store_regressor_model, train_params, BayesianRidge)
 
 
+class Lasso(SklearnRegressor):
+    def __init__(self, where_store_regressor_model=None, train_params=None):
+        from sklearn.linear_model import Lasso
+        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, Lasso)
+
+
 class LightGBMRegressor(Regressor):
     def __init__(self, where_store_regressor_model=None, train_params=None):
         Regressor.__init__(self, where_store_regressor_model, train_params)
         if self.train_params is None:
             self.train_params = {
-                "objective": "regression",
-                "metric": "rmse",
-                "num_leaves": 40,
-                "learning_rate": 0.005,
-                "bagging_fraction": 0.6,
-                "feature_fraction": 0.6,
-                "bagging_frequency": 6,
-                "bagging_seed": 42,
-                "verbosity": -1,
-                "seed": 42
+                'objective': 'regression',
+                'num_leaves': 5,
+                'learning_rate': 0.05,
+                'n_estimators': 720,
+                'max_bin': 55,
+                'bagging_fraction': 0.8,
+                'bagging_freq': 5, 'feature_fraction': 0.2319,
+                'feature_fraction_seed': 9, 'bagging_seed': 9,
+                'min_data_in_leaf': 6, 'min_sum_hessian_in_leaf': 11
             }
 
     def build_model(self):
@@ -181,14 +186,15 @@ class LightGBMRegressor(Regressor):
         创建模型
         :return:
         """
-        raise RuntimeError("need to implement!")
+        import lightgbm as lgb
+        self.regressor_model = lgb.LGBMRegressor(**self.train_params)
 
     def fit(self, train_x, train_y):
         """
         拟合数据
         :return:
         """
-        raise RuntimeError("need to implement!")
+        self.regressor_model.fit(train_x, train_y)
 
     def predict(self, test_x):
         """
@@ -196,21 +202,73 @@ class LightGBMRegressor(Regressor):
         :param test_x:
         :return:
         """
-        raise RuntimeError("need to implement!")
+        return self.regressor_model.predict(test_x)
 
     def save_model(self):
         """
         存储模型
         :return:
         """
-        raise RuntimeError("need to implement!")
+        joblib.dump(self.regressor_model, self.regressor_model_path)
 
     def load_model(self):
         """
         加载模型
         :return:
         """
-        raise RuntimeError("need to implement!")
+        self.regressor_model = joblib.load(self.regressor_model_path)
+
+
+class XGBOOSTRegressor(Regressor):
+    def __init__(self, where_store_regressor_model=None, train_params=None):
+        Regressor.__init__(self, where_store_regressor_model, train_params)
+        if self.train_params is None:
+            self.train_params = {
+                'colsample_bytree': 0.4603, 'gamma': 0.0468,
+                'learning_rate': 0.05, 'max_depth': 3,
+                'min_child_weight': 1.7817, 'n_estimators': 2200,
+                'reg_alpha': 0.4640, 'reg_lambda': 0.8571,
+                'subsample': 0.5213, 'silent': 1,
+                'random_state': 7, 'nthread': -1
+            }
+
+    def build_model(self):
+        """
+        创建模型
+        :return:
+        """
+        import xgboost as xgb
+        self.regressor_model=xgb.XGBRegressor(**self.train_params)
+
+    def fit(self, train_x, train_y):
+        """
+        拟合数据
+        :return:
+        """
+        self.regressor_model.fit(train_x,train_y)
+
+    def predict(self, test_x):
+        """
+        预测结果
+        :param test_x:
+        :return:
+        """
+        return self.regressor_model.predict(test_x)
+
+    def save_model(self):
+        """
+        存储模型
+        :return:
+        """
+        self.regressor_model.save_model(self.regressor_model_path)
+
+    def load_model(self):
+        """
+        加载模型
+        :return:
+        """
+        import xgboost as xgb
+        self.regressor_model=xgb.XGBRegressor.load_model(self.regressor_model_path)
 
 
 '''
@@ -369,7 +427,7 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
 
 
 class StackingRegressor(Regressor):
-    def __init__(self, base_regressors=list(), meta_regressor=None, force_cv=True,base_k_fold=5,meta_k_fold=5):
+    def __init__(self, base_regressors=list(), meta_regressor=None, force_cv=True, base_k_fold=5, meta_k_fold=5):
         """
         为cv训练方式提供更好的支持
 
@@ -389,9 +447,10 @@ class StackingRegressor(Regressor):
         if self.force_cv:
             for index in range(0, len(self.base_regressors)):
                 if not isinstance(self.base_regressors[index], KFolds_Regressor_Training_Wrapper):
-                    self.base_regressors[index] = KFolds_Regressor_Training_Wrapper(self.base_regressors[index],k_fold=base_k_fold)
+                    self.base_regressors[index] = KFolds_Regressor_Training_Wrapper(self.base_regressors[index],
+                                                                                    k_fold=base_k_fold)
             if not isinstance(self.meta_regressor, KFolds_Regressor_Training_Wrapper):
-                self.meta_regressor = KFolds_Regressor_Training_Wrapper(self.meta_regressor,k_fold=meta_k_fold)
+                self.meta_regressor = KFolds_Regressor_Training_Wrapper(self.meta_regressor, k_fold=meta_k_fold)
 
     def _build_base_regressor_models(self):
         """
