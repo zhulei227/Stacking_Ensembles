@@ -18,36 +18,40 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 切换CPU
 """
 
 
-def create_balance_model(method="SMOTE"):
-    from imblearn.over_sampling import SMOTE, ADASYN, SVMSMOTE, BorderlineSMOTE, RandomOverSampler
-    from imblearn.under_sampling import ClusterCentroids, RandomUnderSampler, InstanceHardnessThreshold, NearMiss, \
-        TomekLinks, EditedNearestNeighbours, RepeatedEditedNearestNeighbours, AllKNN, OneSidedSelection, \
-        CondensedNearestNeighbour, NeighbourhoodCleaningRule
-    from imblearn.ensemble import EasyEnsemble, EasyEnsembleClassifier, BalancedBaggingClassifier, \
-        BalancedRandomForestClassifier, BalanceCascade, RUSBoostClassifier
+class ImbalanceSample(object):
+    def __init__(self):
+        from imblearn.over_sampling import SMOTE, ADASYN, SVMSMOTE, BorderlineSMOTE, RandomOverSampler
+        from imblearn.under_sampling import ClusterCentroids, RandomUnderSampler, InstanceHardnessThreshold, NearMiss, \
+            TomekLinks, EditedNearestNeighbours, RepeatedEditedNearestNeighbours, AllKNN, OneSidedSelection, \
+            CondensedNearestNeighbour, NeighbourhoodCleaningRule
+        from imblearn.ensemble import EasyEnsemble, EasyEnsembleClassifier, BalancedBaggingClassifier, \
+            BalancedRandomForestClassifier, BalanceCascade, RUSBoostClassifier
 
-    oversamplers = {'ADASYN': ADASYN(), 'RandomOverSampler': RandomOverSampler(),
-                    'SMOTE': SMOTE(), 'BorderlineSMOTE': BorderlineSMOTE(), 'SVMSMOTE': SVMSMOTE()}
-    undersamplers = {
-        'ClusterCentroids': ClusterCentroids(), 'RandomUnderSampler': RandomUnderSampler(),
-        'InstanceHardnessThreshold': InstanceHardnessThreshold(),
-        'NearMiss': NearMiss(), 'TomekLinks': TomekLinks(), 'EditedNearestNeighbours': EditedNearestNeighbours(),
-        'RepeatedEditedNearestNeighbours': RepeatedEditedNearestNeighbours(), 'AllKNN': AllKNN(),
-        'OneSidedSelection': OneSidedSelection(),
-        'CondensedNearestNeighbour': CondensedNearestNeighbour(),
-        'NeighbourhoodCleaningRule': NeighbourhoodCleaningRule()
-    }
-    ensemblesamplers = {'EasyEnsemble': EasyEnsemble(), 'EasyEnsembleClassifier': EasyEnsembleClassifier(),
-                        'BalancedBaggingClassifier': BalancedBaggingClassifier(), 'BalanceCascade': BalanceCascade(),
-                        'BalancedRandomForestClassifier': BalancedRandomForestClassifier,
-                        'RUSBoostClassifier': RUSBoostClassifier()}
-    if method in oversamplers:
-        return oversamplers[method]
-    if method in undersamplers:
-        return undersamplers[method]
-    if method in ensemblesamplers:
-        return ensemblesamplers[method]
-    return oversamplers['SMOTE']
+        self.oversamplers = {'ADASYN': ADASYN(), 'RandomOverSampler': RandomOverSampler(),
+                             'SMOTE': SMOTE(), 'BorderlineSMOTE': BorderlineSMOTE(), 'SVMSMOTE': SVMSMOTE()}
+        self.undersamplers = {
+            'ClusterCentroids': ClusterCentroids(), 'RandomUnderSampler': RandomUnderSampler(),
+            'InstanceHardnessThreshold': InstanceHardnessThreshold(),
+            'NearMiss': NearMiss(), 'TomekLinks': TomekLinks(), 'EditedNearestNeighbours': EditedNearestNeighbours(),
+            'RepeatedEditedNearestNeighbours': RepeatedEditedNearestNeighbours(), 'AllKNN': AllKNN(),
+            'OneSidedSelection': OneSidedSelection(),
+            'CondensedNearestNeighbour': CondensedNearestNeighbour(),
+            'NeighbourhoodCleaningRule': NeighbourhoodCleaningRule()
+        }
+        self.ensemblesamplers = {'EasyEnsemble': EasyEnsemble(), 'EasyEnsembleClassifier': EasyEnsembleClassifier(),
+                                 'BalancedBaggingClassifier': BalancedBaggingClassifier(),
+                                 'BalanceCascade': BalanceCascade(),
+                                 'BalancedRandomForestClassifier': BalancedRandomForestClassifier,
+                                 'RUSBoostClassifier': RUSBoostClassifier()}
+
+    def build_model(self, method="SMOTE"):
+        if method in self.oversamplers:
+            return self.oversamplers[method]
+        if method in self.undersamplers:
+            return self.undersamplers[method]
+        if method in self.ensemblesamplers:
+            return self.ensemblesamplers[method]
+        return self.oversamplers['SMOTE']
 
 
 """
@@ -60,15 +64,13 @@ class Classifier(object):
     定义分类器接口
     """
 
-    def __init__(self, where_store_classifier_model=None, train_params=None, how_balance_sample=None):
+    def __init__(self, where_store_classifier_model=None, train_params=None):
         """
         :param where_store_classifier_model:模型保存路径
         :param train_params: 训练参数
-        :param how_balance_sample:如何平衡样本
         """
         self.classifier_model_path = where_store_classifier_model
         self.train_params = {} if train_params is None else train_params
-        self.how_balance_sample = how_balance_sample
 
     def build_model(self):
         """
@@ -135,16 +137,19 @@ class SklearnClassifier(Classifier):
     """
 
     def __init__(self, where_store_classifier_model=None, train_params=None, classifier_class=None,
-                 if_balance_sample=True):
-        Classifier.__init__(self, where_store_classifier_model, train_params, if_balance_sample)
+                 how_balance_sample="SMOTE"):
+        Classifier.__init__(self, where_store_classifier_model, train_params)
         self.classifier_class = classifier_class
+        self.how_balance_sample = how_balance_sample
+        self.imbalance_sample_model = ImbalanceSample()
 
     def build_model(self):
         self.classifier_model = self.classifier_class(**self.train_params)
 
     def fit(self, train_x, train_y):
         if self.how_balance_sample is not None:
-            train_x, train_y = create_balance_model(self.how_balance_sample).fit_resample(train_x, train_y)
+            train_x, train_y = self.imbalance_sample_model.build_model(self.how_balance_sample).fit_resample(train_x,
+                                                                                                             train_y)
         self.class_num = len(set(train_y))
         self.classifier_model.fit(train_x, train_y)
 
@@ -187,39 +192,44 @@ class SVMClassifier(SklearnClassifier):
 
 
 class RandomForestClassifier(SklearnClassifier):
-    def __init__(self, where_store_classifier_model=None, train_params=None):
+    def __init__(self, where_store_classifier_model=None, train_params=None, how_balance_sample="SMOTE"):
         from sklearn.ensemble import RandomForestClassifier
-        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, RandomForestClassifier)
+        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, RandomForestClassifier,
+                                   how_balance_sample)
 
 
 class GradientBoostingClassifier(SklearnClassifier):
-    def __init__(self, where_store_classifier_model=None, train_params=None):
+    def __init__(self, where_store_classifier_model=None, train_params=None, how_balance_sample="SMOTE"):
         from sklearn.ensemble import GradientBoostingClassifier
-        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, GradientBoostingClassifier)
+        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, GradientBoostingClassifier,
+                                   how_balance_sample)
 
 
 class AdaBoostClassifier(SklearnClassifier):
-    def __init__(self, where_store_classifier_model=None, train_params=None):
+    def __init__(self, where_store_classifier_model=None, train_params=None, how_balance_sample="SMOTE"):
         from sklearn.ensemble import AdaBoostClassifier
-        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, AdaBoostClassifier)
+        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, AdaBoostClassifier,
+                                   how_balance_sample)
 
 
 class BaggingClassifier(SklearnClassifier):
-    def __init__(self, where_store_classifier_model=None, train_params=None):
+    def __init__(self, where_store_classifier_model=None, train_params=None, how_balance_sample="SMOTE"):
         from sklearn.ensemble import BaggingClassifier
-        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, BaggingClassifier)
+        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, BaggingClassifier,
+                                   how_balance_sample)
 
 
 class LogisticRegression(SklearnClassifier):
-    def __init__(self, where_store_classifier_model=None, train_params=None):
+    def __init__(self, where_store_classifier_model=None, train_params=None, how_balance_sample="SMOTE"):
         from sklearn.linear_model import LogisticRegression
-        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, LogisticRegression)
+        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, LogisticRegression,
+                                   how_balance_sample)
 
 
 class NaiveBayesClassifier(SklearnClassifier):
-    def __init__(self, where_store_classifier_model=None, train_params=None):
+    def __init__(self, where_store_classifier_model=None, train_params=None, how_balance_sample="SMOTE"):
         from sklearn.naive_bayes import GaussianNB
-        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, GaussianNB)
+        SklearnClassifier.__init__(self, where_store_classifier_model, train_params, GaussianNB, how_balance_sample)
 
 
 """
