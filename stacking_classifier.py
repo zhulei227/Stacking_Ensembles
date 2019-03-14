@@ -3,29 +3,72 @@ from sklearn.model_selection import KFold
 import pickle
 from keras.utils.np_utils import to_categorical
 from keras.models import Sequential, load_model
-from keras.layers import  Dropout, Dense,Activation
+from keras.layers import Dropout, Dense, Activation
 import copy
 import numpy as np
 import warnings
+
 warnings.filterwarnings("ignore")
 import os
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 切换CPU
+
+"""
+样本平衡模块
+"""
+
+
+def create_balance_model(method="SMOTE"):
+    from imblearn.over_sampling import SMOTE, ADASYN, SVMSMOTE, BorderlineSMOTE, RandomOverSampler
+    from imblearn.under_sampling import ClusterCentroids, RandomUnderSampler, InstanceHardnessThreshold, NearMiss, \
+        TomekLinks, EditedNearestNeighbours, RepeatedEditedNearestNeighbours, AllKNN, OneSidedSelection, \
+        CondensedNearestNeighbour, NeighbourhoodCleaningRule
+    from imblearn.ensemble import EasyEnsemble, EasyEnsembleClassifier, BalancedBaggingClassifier, \
+        BalancedRandomForestClassifier, BalanceCascade, RUSBoostClassifier
+
+    oversamplers = {'ADASYN': ADASYN(), 'RandomOverSampler': RandomOverSampler(),
+                    'SMOTE': SMOTE(), 'BorderlineSMOTE': BorderlineSMOTE(), 'SVMSMOTE': SVMSMOTE()}
+    undersamplers = {
+        'ClusterCentroids': ClusterCentroids(), 'RandomUnderSampler': RandomUnderSampler(),
+        'InstanceHardnessThreshold': InstanceHardnessThreshold(),
+        'NearMiss': NearMiss(), 'TomekLinks': TomekLinks(), 'EditedNearestNeighbours': EditedNearestNeighbours(),
+        'RepeatedEditedNearestNeighbours': RepeatedEditedNearestNeighbours(), 'AllKNN': AllKNN(),
+        'OneSidedSelection': OneSidedSelection(),
+        'CondensedNearestNeighbour': CondensedNearestNeighbour(),
+        'NeighbourhoodCleaningRule': NeighbourhoodCleaningRule()
+    }
+    ensemblesamplers = {'EasyEnsemble': EasyEnsemble(), 'EasyEnsembleClassifier': EasyEnsembleClassifier(),
+                        'BalancedBaggingClassifier': BalancedBaggingClassifier(), 'BalanceCascade': BalanceCascade(),
+                        'BalancedRandomForestClassifier': BalancedRandomForestClassifier,
+                        'RUSBoostClassifier': RUSBoostClassifier()}
+    if method in oversamplers:
+        return oversamplers[method]
+    if method in undersamplers:
+        return undersamplers[method]
+    if method in ensemblesamplers:
+        return ensemblesamplers[method]
+    return oversamplers['SMOTE']
+
+
 """
 分类器接口
 """
+
 
 class Classifier(object):
     """
     定义分类器接口
     """
 
-    def __init__(self, where_store_classifier_model=None, train_params=None):
+    def __init__(self, where_store_classifier_model=None, train_params=None, how_balance_sample=None):
         """
         :param where_store_classifier_model:模型保存路径
         :param train_params: 训练参数
+        :param how_balance_sample:如何平衡样本
         """
         self.classifier_model_path = where_store_classifier_model
         self.train_params = {} if train_params is None else train_params
+        self.how_balance_sample = how_balance_sample
 
     def build_model(self):
         """
@@ -91,14 +134,17 @@ class SklearnClassifier(Classifier):
     基于sklearn api的classifier实现
     """
 
-    def __init__(self, where_store_classifier_model=None, train_params=None, classifier_class=None):
-        Classifier.__init__(self, where_store_classifier_model, train_params)
+    def __init__(self, where_store_classifier_model=None, train_params=None, classifier_class=None,
+                 if_balance_sample=True):
+        Classifier.__init__(self, where_store_classifier_model, train_params, if_balance_sample)
         self.classifier_class = classifier_class
 
     def build_model(self):
         self.classifier_model = self.classifier_class(**self.train_params)
 
     def fit(self, train_x, train_y):
+        if self.how_balance_sample is not None:
+            train_x, train_y = create_balance_model(self.how_balance_sample).fit_resample(train_x, train_y)
         self.class_num = len(set(train_y))
         self.classifier_model.fit(train_x, train_y)
 
@@ -180,6 +226,7 @@ class NaiveBayesClassifier(SklearnClassifier):
 DNN分类模型,该部分利用keras简单实现MLP分类
 """
 
+
 class SimpleMLPClassifer(Classifier):
     def __init__(self, where_store_classifier_model=None, train_params=None):
         """
@@ -188,6 +235,7 @@ class SimpleMLPClassifer(Classifier):
         """
         Classifier.__init__(self, where_store_classifier_model, train_params)
         self._check_params()
+
     def _check_params(self):
         if 'input_num' not in self.train_params:
             raise RuntimeError('no input_num param in train_params!')
@@ -201,6 +249,7 @@ class SimpleMLPClassifer(Classifier):
             self.train_params['shuffle'] = True
         if 'validation_split' not in self.train_params:
             self.train_params['validation_split'] = 0.05
+
     def build_model(self):
         self.classifier_model = Sequential()
         self.classifier_model.add(Dense(512, input_shape=(self.train_params['input_num'],)))
@@ -209,8 +258,8 @@ class SimpleMLPClassifer(Classifier):
         self.classifier_model.add(Dense(self.train_params['class_num']))
         self.classifier_model.add(Activation('softmax'))
         self.classifier_model.compile(loss='categorical_crossentropy',
-                      optimizer='adam',
-                      metrics=['accuracy'])
+                                      optimizer='adam',
+                                      metrics=['accuracy'])
 
     def fit(self, train_x, train_y):
         self.classifier_model.fit(x=train_x, y=to_categorical(train_y, self.train_params['class_num']),
@@ -220,19 +269,19 @@ class SimpleMLPClassifer(Classifier):
                                   verbose=False)
 
     def predict_categorical(self, test_x):
-        categorical_labels=self.classifier_model.predict(test_x, batch_size=test_x.shape[0])
-        new_categorical_result=np.zeros(shape=categorical_labels.shape)
-        for index in range(0,len(categorical_labels)):
-            categorical_label=categorical_labels[index].tolist()
-            maxvalue_index=categorical_label.index(max(categorical_label))
-            new_categorical_result[index][maxvalue_index]=1
+        categorical_labels = self.classifier_model.predict(test_x, batch_size=test_x.shape[0])
+        new_categorical_result = np.zeros(shape=categorical_labels.shape)
+        for index in range(0, len(categorical_labels)):
+            categorical_label = categorical_labels[index].tolist()
+            maxvalue_index = categorical_label.index(max(categorical_label))
+            new_categorical_result[index][maxvalue_index] = 1
         return new_categorical_result
 
     def predict(self, test_x):
         p_categorical_probas = self.predict_categorical_proba(test_x)
-        result=[]
+        result = []
         for categorical_proba in p_categorical_probas:
-            categorical_proba=categorical_proba.tolist()
+            categorical_proba = categorical_proba.tolist()
             result.append(categorical_proba.index(max(categorical_proba)))
         return np.asarray(result)
 
@@ -252,6 +301,7 @@ class SimpleMLPClassifer(Classifier):
 
     def load_model(self):
         self.classifier_model = load_model(self.classifier_model_path)
+
 
 class KFolds_Classifier_Training_Wrapper(Classifier):
     '''
@@ -414,8 +464,10 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
             new_classifier.load_model()
             self.extend_classifiers.append(new_classifier)
 
+
 class StackingClassifier(Classifier):
-    def __init__(self, base_classifiers=list(), meta_classifier=None, use_probas=True, force_cv=True,base_k_fold=5,meta_k_fold=5):
+    def __init__(self, base_classifiers=list(), meta_classifier=None, use_probas=True, force_cv=True, base_k_fold=5,
+                 meta_k_fold=5):
         """
         为cv训练方式提供更好的支持
 
@@ -437,9 +489,10 @@ class StackingClassifier(Classifier):
         if self.force_cv:
             for index in range(0, len(self.base_classifiers)):
                 if not isinstance(self.base_classifiers[index], KFolds_Classifier_Training_Wrapper):
-                    self.base_classifiers[index] = KFolds_Classifier_Training_Wrapper(self.base_classifiers[index],k_fold=base_k_fold)
+                    self.base_classifiers[index] = KFolds_Classifier_Training_Wrapper(self.base_classifiers[index],
+                                                                                      k_fold=base_k_fold)
             if not isinstance(self.meta_classifier, KFolds_Classifier_Training_Wrapper):
-                self.meta_classifier = KFolds_Classifier_Training_Wrapper(self.meta_classifier,k_fold=meta_k_fold)
+                self.meta_classifier = KFolds_Classifier_Training_Wrapper(self.meta_classifier, k_fold=meta_k_fold)
 
     def _build_base_classifier_models(self):
         """
