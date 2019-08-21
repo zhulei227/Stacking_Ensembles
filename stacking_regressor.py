@@ -1,15 +1,10 @@
-from sklearn.externals import joblib
-from keras.models import Sequential, load_model
-from keras.layers import Dense
+import pickle
 import copy
+import numpy as np
+from sklearn.model_selection import KFold
 import warnings
 
 warnings.filterwarnings("ignore")
-import os
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 切换成CPU
-from sklearn.model_selection import KFold
-import numpy as np
 
 
 class Regressor(object):
@@ -17,12 +12,10 @@ class Regressor(object):
     定义回归器接口
     '''
 
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         """
-        :param where_store_regressor_model:模型保存路径
         :param train_params: 训练参数
         """
-        self.regressor_model_path = where_store_regressor_model
         self.train_params = {} if train_params is None else train_params
 
     def build_model(self):
@@ -47,19 +40,23 @@ class Regressor(object):
         """
         raise RuntimeError("need to implement!")
 
-    def save_model(self):
+    def save_model(self, model_path):
         """
         存储模型
         :return:
         """
-        raise RuntimeError("need to implement!")
+        with open(model_path, 'wb') as model_file:
+            pickle.dump(self, model_file)
 
-    def load_model(self):
+    @staticmethod
+    def load_model(model_path):
         """
         加载模型
         :return:
         """
-        raise RuntimeError("need to implement!")
+        with open(model_path, 'rb') as model_file:
+            new_model = pickle.load(model_file)
+        return new_model
 
 
 class SklearnRegressor(Regressor):
@@ -67,8 +64,8 @@ class SklearnRegressor(Regressor):
     基于sklearn api的regressor实现
     """
 
-    def __init__(self, where_store_regressor_model=None, train_params=None, regressor_class=None):
-        Regressor.__init__(self, where_store_regressor_model, train_params)
+    def __init__(self, train_params=None, regressor_class=None):
+        Regressor.__init__(self, train_params)
         self.regressor_class = regressor_class
 
     def build_model(self):
@@ -80,245 +77,83 @@ class SklearnRegressor(Regressor):
     def predict(self, test_x):
         return self.regressor_model.predict(test_x)
 
-    def save_model(self):
-        joblib.dump(self.regressor_model, self.regressor_model_path)
-
-    def load_model(self):
-        self.regressor_model = joblib.load(self.regressor_model_path)
-
 
 class DecisionTreeRegressor(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.tree import DecisionTreeRegressor
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, DecisionTreeRegressor)
+        SklearnRegressor.__init__(self, train_params, DecisionTreeRegressor)
 
 
 class LinearRegression(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.linear_model import LinearRegression
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, LinearRegression)
+        SklearnRegressor.__init__(self, train_params, LinearRegression)
 
 
 class KNeighborsRegressor(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.neighbors import KNeighborsRegressor
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, KNeighborsRegressor)
+        SklearnRegressor.__init__(self, train_params, KNeighborsRegressor)
 
 
 class AdaBoostRegressor(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.ensemble import AdaBoostRegressor
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, AdaBoostRegressor)
+        SklearnRegressor.__init__(self, train_params, AdaBoostRegressor)
 
 
 class GradientBoostingRegressor(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.ensemble import GradientBoostingRegressor
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, GradientBoostingRegressor)
+        SklearnRegressor.__init__(self, train_params, GradientBoostingRegressor)
 
 
 class BaggingRegressor(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.ensemble import BaggingRegressor
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, BaggingRegressor)
+        SklearnRegressor.__init__(self, train_params, BaggingRegressor)
 
 
 class ExtraTreeRegressor(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.tree import ExtraTreeRegressor
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, ExtraTreeRegressor)
+        SklearnRegressor.__init__(self, train_params, ExtraTreeRegressor)
 
 
 class SVRRegressor(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.svm import SVR
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, SVR)
+        SklearnRegressor.__init__(self, train_params, SVR)
 
 
 class LinearSVR(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.svm import LinearSVR
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, LinearSVR)
+        SklearnRegressor.__init__(self, train_params, LinearSVR)
 
 
 class ElasticNet(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.linear_model import ElasticNet
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, ElasticNet)
+        SklearnRegressor.__init__(self, train_params, ElasticNet)
 
 
 class ElasticNetCV(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.linear_model import ElasticNetCV
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, ElasticNetCV)
+        SklearnRegressor.__init__(self, train_params, ElasticNetCV)
 
 
 class BayesianRidge(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.linear_model import BayesianRidge
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, BayesianRidge)
+        SklearnRegressor.__init__(self, train_params, BayesianRidge)
 
 
 class Lasso(SklearnRegressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
+    def __init__(self, train_params=None):
         from sklearn.linear_model import Lasso
-        SklearnRegressor.__init__(self, where_store_regressor_model, train_params, Lasso)
-
-
-class LightGBMRegressor(Regressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
-        Regressor.__init__(self, where_store_regressor_model, train_params)
-        if self.train_params is None:
-            self.train_params = {
-                'objective': 'regression',
-                'num_leaves': 5,
-                'learning_rate': 0.05,
-                'n_estimators': 720,
-                'max_bin': 55,
-                'bagging_fraction': 0.8,
-                'bagging_freq': 5, 'feature_fraction': 0.2319,
-                'feature_fraction_seed': 9, 'bagging_seed': 9,
-                'min_data_in_leaf': 6, 'min_sum_hessian_in_leaf': 11
-            }
-
-    def build_model(self):
-        """
-        创建模型
-        :return:
-        """
-        import lightgbm as lgb
-        self.regressor_model = lgb.LGBMRegressor(**self.train_params)
-
-    def fit(self, train_x, train_y):
-        """
-        拟合数据
-        :return:
-        """
-        self.regressor_model.fit(train_x, train_y)
-
-    def predict(self, test_x):
-        """
-        预测结果
-        :param test_x:
-        :return:
-        """
-        return self.regressor_model.predict(test_x)
-
-    def save_model(self):
-        """
-        存储模型
-        :return:
-        """
-        joblib.dump(self.regressor_model, self.regressor_model_path)
-
-    def load_model(self):
-        """
-        加载模型
-        :return:
-        """
-        self.regressor_model = joblib.load(self.regressor_model_path)
-
-
-class XGBOOSTRegressor(Regressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
-        Regressor.__init__(self, where_store_regressor_model, train_params)
-        if self.train_params is None:
-            self.train_params = {
-                'colsample_bytree': 0.4603, 'gamma': 0.0468,
-                'learning_rate': 0.05, 'max_depth': 3,
-                'min_child_weight': 1.7817, 'n_estimators': 2200,
-                'reg_alpha': 0.4640, 'reg_lambda': 0.8571,
-                'subsample': 0.5213, 'silent': 1,
-                'random_state': 7, 'nthread': -1
-            }
-
-    def build_model(self):
-        """
-        创建模型
-        :return:
-        """
-        import xgboost as xgb
-        self.regressor_model=xgb.XGBRegressor(**self.train_params)
-
-    def fit(self, train_x, train_y):
-        """
-        拟合数据
-        :return:
-        """
-        self.regressor_model.fit(train_x,train_y)
-
-    def predict(self, test_x):
-        """
-        预测结果
-        :param test_x:
-        :return:
-        """
-        return self.regressor_model.predict(test_x)
-
-    def save_model(self):
-        """
-        存储模型
-        :return:
-        """
-        self.regressor_model.save_model(self.regressor_model_path)
-
-    def load_model(self):
-        """
-        加载模型
-        :return:
-        """
-        import xgboost as xgb
-        self.regressor_model=xgb.XGBRegressor.load_model(self.regressor_model_path)
-
-
-'''
-DNN回归模型,该部分利用keras简单实现MLP回归
-'''
-
-
-class SimpleMLPRegressor(Regressor):
-    def __init__(self, where_store_regressor_model=None, train_params=None):
-        """
-        :param where_store_regressor_model:
-        :param train_params:
-        """
-        Regressor.__init__(self, where_store_regressor_model, train_params)
-        self._check_params()
-
-    def _check_params(self):
-        if 'input_num' not in self.train_params:
-            raise RuntimeError('no input_num param in train_params!')
-        if 'batch_size' not in self.train_params:
-            self.train_params['batch_size'] = 64
-        if 'epochs' not in self.train_params:
-            self.train_params['epochs'] = 5
-        if 'shuffle' not in self.train_params:
-            self.train_params['shuffle'] = True
-        if 'validation_split' not in self.train_params:
-            self.train_params['validation_split'] = 0.1
-
-    def build_model(self):
-        self.regressor_model = Sequential()
-        self.regressor_model.add(
-            Dense(10, input_dim=self.train_params['input_num'], init='normal', activation='linear'))
-        self.regressor_model.add(Dense(1))
-        self.regressor_model.compile(loss='mse', optimizer='adam')
-
-    def fit(self, train_x, train_y):
-        self.regressor_model.fit(x=train_x, y=train_y,
-                                 batch_size=self.train_params['batch_size'], epochs=self.train_params['epochs'],
-                                 validation_split=self.train_params['validation_split'],
-                                 shuffle=self.train_params['shuffle'],
-                                 verbose=False)
-
-    def predict(self, test_x):
-        return self.regressor_model.predict(test_x, batch_size=test_x.shape[0])
-
-    def save_model(self):
-        self.regressor_model.save(self.regressor_model_path)
-
-    def load_model(self):
-        self.regressor_model = load_model(self.regressor_model_path)
+        SklearnRegressor.__init__(self, train_params, Lasso)
 
 
 class KFolds_Regressor_Training_Wrapper(Regressor):
@@ -326,7 +161,7 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
     对训练的回归器进行交叉式训练，是对原始回归器的扩展，可独立使用
     '''
 
-    def __init__(self, base_regressor=None, k_fold=5):
+    def __init__(self, base_regressor=None, k_fold=5,random_state=42):
         """
 
         :param base_regressor:
@@ -335,26 +170,16 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
         Regressor.__init__(self)
         self.base_regressor = base_regressor
         self.k_fold = k_fold
-        self._suffix_for_cv = None  # 用于再次被KFolds_Training_Wrapper包装
-
-    def _append_model_path(self):
-        self.extend_regressors_path_list = ['_cv' + str(index) for index in range(0, self.k_fold)]
+        self.random_state=random_state
 
     def build_model(self):
         """
         创建模型
         :return:
         """
-        self._append_model_path()
         self.extend_regressors = []
-        for append_path in self.extend_regressors_path_list:
+        for _ in range(0, self.k_fold):
             new_regressor = copy.deepcopy(self.base_regressor)
-            if new_regressor.regressor_model_path is None:
-                new_regressor._suffix_for_cv = append_path + (
-                    self._suffix_for_cv if self._suffix_for_cv is not None else '')
-            else:
-                new_regressor.regressor_model_path = self.base_regressor.regressor_model_path + append_path + (
-                    self._suffix_for_cv if self._suffix_for_cv is not None else '')
             new_regressor.build_model()
             self.extend_regressors.append(new_regressor)
 
@@ -365,7 +190,7 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
         """
         self.train_x = train_x
         self.train_y = train_y
-        kf = KFold(n_splits=self.k_fold, shuffle=False, random_state=227)
+        kf = KFold(n_splits=self.k_fold, shuffle=False, random_state=self.random_state)
         index = 0
         for train_index, _ in kf.split(train_x):
             X_train = train_x[train_index]
@@ -379,7 +204,7 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
         :return:
         """
         regression_results = []
-        kf = KFold(n_splits=self.k_fold, shuffle=False, random_state=227)
+        kf = KFold(n_splits=self.k_fold, shuffle=False, random_state=self.random_state)
         kf.get_n_splits(self.train_x)
         index = 0
         for _, test_index in kf.split(self.train_x):
@@ -398,32 +223,6 @@ class KFolds_Regressor_Training_Wrapper(Regressor):
         for regressor_id in range(1, len(self.extend_regressors)):
             regression_result += self.extend_regressors[regressor_id].predict(test_x)
         return regression_result / (1.0 * self.k_fold)
-
-    def save_model(self):
-        """
-        存储模型
-        :return:
-        """
-        for regressor in self.extend_regressors:
-            regressor.save_model()
-
-    def load_model(self):
-        """
-        加载模型
-        :return:
-        """
-        self._append_model_path()
-        self.extend_regressors = []
-        for append_path in self.extend_regressors_path_list:
-            new_regressor = copy.deepcopy(self.base_regressor)
-            if new_regressor.regressor_model_path is None:
-                new_regressor._suffix_for_cv = append_path + (
-                    self._suffix_for_cv if self._suffix_for_cv is not None else '')
-            else:
-                new_regressor.regressor_model_path = self.base_regressor.regressor_model_path + append_path + (
-                    self._suffix_for_cv if self._suffix_for_cv is not None else '')
-            new_regressor.load_model()
-            self.extend_regressors.append(new_regressor)
 
 
 class StackingRegressor(Regressor):
@@ -458,10 +257,6 @@ class StackingRegressor(Regressor):
         :return:
         """
         for regressor in self.base_regressors:
-            if regressor.regressor_model_path is not None:
-                regressor.regressor_model_path += (self._suffix_for_cv if self._suffix_for_cv is not None else '')
-            else:
-                regressor._suffix_for_cv = self._suffix_for_cv
             regressor.build_model()
 
     def _build_meta_regressor_model(self):
@@ -469,11 +264,6 @@ class StackingRegressor(Regressor):
         构建元回归器
         :return:
         """
-        if self.meta_regressor.regressor_model_path is not None:
-            self.meta_regressor.regressor_model_path += (
-                self._suffix_for_cv if self._suffix_for_cv is not None else '')
-        else:
-            self.meta_regressor._suffix_for_cv = self._suffix_for_cv
         self.meta_regressor.build_model()
 
     def build_model(self):
@@ -542,58 +332,3 @@ class StackingRegressor(Regressor):
         :return:
         """
         return self.meta_regressor.predict(self._combine_base_regressor_predict(test_x))
-
-    def _save_base_regressor_models(self):
-        """
-        保存基回归器
-        :return:
-        """
-        for regressor in self.base_regressors:
-            regressor.save_model()
-
-    def _save_meta_regressor_model(self):
-        """
-        保存元回归器
-        :return:
-        """
-        self.meta_regressor.save_model()
-
-    def save_model(self):
-        """
-        保存所有回归器
-        :return:
-        """
-        self._save_base_regressor_models()
-        self._save_meta_regressor_model()
-
-    def _load_base_regressor_models(self):
-        """
-        加载基回归器
-        :return:
-
-        base_regressor should like XXXRegressor(where_store_regressor_model='/.../')
-        """
-        for regressor in self.base_regressors:
-            if regressor.regressor_model_path is None:
-                regressor._suffix_for_cv = self._suffix_for_cv if self._suffix_for_cv is not None else ''
-            regressor.load_model()
-
-    def _load_meta_regressor_model(self):
-        """
-        加载元回归器
-        :return:
-
-        meta_regressor should like XXXregressor(where_store_regressor_model='/.../')
-        """
-        if self.meta_regressor.regressor_model_path is None:
-            self.meta_regressor._suffix_for_cv = self._suffix_for_cv if self._suffix_for_cv is not None else ''
-        self.meta_regressor.load_model()
-
-    def load_model(self):
-        """
-        加载模型
-        所有基回归器以及元回归器必须指定存储路径
-        :return:
-        """
-        self._load_base_regressor_models()
-        self._load_meta_regressor_model()

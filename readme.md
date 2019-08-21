@@ -1,28 +1,11 @@
-# Stacking_Ensembles
+
+### 特点
+（1）通过实现Classifier/SklearnClassifier接口（SklearnClassifier是Classifier的子类），可以方便将分类器扩展到Sklearn,Keras等其他开源工具；  
+（2）可以构建很深，很复杂的stacking结构  
+
+接下来，我在手写数值识别上演示api使用示例：  
 
 
-A python implementation of Stacking_Ensembles, including Stacking Classification and Regression.
-
-**Features:**
-- Base classifiers or regressions are extensible, and you can implement them using **sklearn**, **keras**, **sparkML**, or even your own way.
-- Flexible **cross training wrapper**, you can easily create hundreds of classifiers or regressor.
-- The stacking classifier/regressor can be used as a base classifier/regressor, so you can build a **deep stacking network** classifier/regressor.
-
-
-**TODO**
-- Adding more base classifiers and regressors.
-- Automatic parameter optimization of classifiers and regressors.
-
-
-## Usage
-**Step 1.**
-
-
-First, you should install the dependency packages in the requirements.txt.
-
-**Step 2.**
-
-Load train data (I only demonstrate the usage of classifiers later, it's similar to the regressor.)
 ```python
 from stacking_classifier import *
 from sklearn.model_selection import train_test_split
@@ -30,137 +13,153 @@ from sklearn.metrics import f1_score
 from sklearn.datasets import load_digits
 digits = load_digits()
 X, y = digits['data'], digits['target']
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.7, random_state=227)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.7, random_state=42)
 ```
 
-## Demo
+### 一.基本分类器的使用
+这里所有的分类器都需要实现Classifier类的接口，如果你是使用的Sklearn风格的分类器，只需要做如下操作即可，这里默认封装了SVMClassifier,RandomForestClassifier,GradientBoostingClassifier,AdaBoostClassifier,BaggingClassifier,LogisticRegression,NaiveBayesClassifier等分类器
 
-**Base classifier/Regressor**
-
-You can simply use the base classifier/regressor like the following.
 
 ```python
-classifier = AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo1_ada.model')#define base classifer
-classifier.build_model()#build model
-classifier.fit(X_train, y_train)#fit data
-p_test = classifier.predict(X_test)#predict test data
-print('demo1-1 ada : ', f1_score(y_test, p_test, average='macro'))#score
+class AdaBoostClassifier(SklearnClassifier):
+    def __init__(self, train_params=None):
+        from sklearn.ensemble import AdaBoostClassifier
+        SklearnClassifier.__init__(self, train_params, AdaBoostClassifier)
 ```
 
 
-
-**Cross Training Wrapper:**
-
-You can use **KFolds_Classifier_Training_Wrapper** or **KFolds_Regressor_Training_Wrapper** to wrap base classifier/regressor up. It divides the training data into ```k_fold``` parts to cross train ```k_fold``` models.
 ```python
-classifier = RandomForestClassifier(where_store_classifier_model='./classifier_model/demo1_1_rf.model')#define a base classifier
-classifier = KFolds_Classifier_Training_Wrapper(classifier)#wrap it,there are 5 models
+classifier = AdaBoostClassifier()
 classifier.build_model()
 classifier.fit(X_train, y_train)
 p_test = classifier.predict(X_test)
-print('demo2-1 rf : ', f1_score(y_test, p_test, average='macro'))
+print(f1_score(y_test, p_test, average='macro'))
 ```
 
-You may have found the classifier/regressor is still packaged as a base classifier/regressor after being wrapped. So you can use the wrapper like this.
+    0.16511852016226553
+    
+
+### 二.KFolds_Classifier_Training_Wrapper包装器的使用
+```KFolds_Classifier_Training_Wrapper```可以将数据切分成```k_fold```份，并训练```k_fold```个分类器
+
 
 ```python
-classifier=KFolds_Classifier_Training_Wrapper(KFolds_Classifier_Training_Wrapper(classifier))#there are 25 models!
+classifier = RandomForestClassifier()
+classifier = KFolds_Classifier_Training_Wrapper(classifier,k_fold=5)#这里封装一下即可，默认k_fold=5
+classifier.build_model()
+classifier.fit(X_train, y_train)
+p_test = classifier.predict(X_test)
+print(f1_score(y_test, p_test, average='macro'))
 ```
 
+    0.9275689728048707
+    
 
-**Simple Stacking classifier/regressor**
 
-You can use simple stacking classfier like this. Every base classifier and meta classfier will be wrapped with KFolds_Classifier_Training_Wrapper automatically.
+```python
+classifier = RandomForestClassifier()
+#KFolds_Classifier_Training_Wrapper也可以嵌套封装，这样下面就有25个基分类器
+classifier = KFolds_Classifier_Training_Wrapper(KFolds_Classifier_Training_Wrapper(classifier))
+classifier.build_model()
+classifier.fit(X_train, y_train)
+p_test = classifier.predict(X_test)
+print(f1_score(y_test, p_test, average='macro'))
+```
+
+    0.9361513960332069
+    
+
+### 三.StackingClassifier分类器的使用
+```StackingClassifier```中的基分类器和元分类器可以是任意实现了Classifier，由于```KFolds_Classifier_Training_Wrapper```以及```StackingClassifier```都继承了```Classifier```接口，所以意味着你可以任意嵌套...
+
+
 ```python
 classifier = StackingClassifier(
     base_classifiers=[
-        RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_rf_stack_cv.model'),
-        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_ada_stack_cv.model'),
-        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_bag_stack_cv.model'),
-        SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_1_layer_2_svm_stack_cv.model'),
+        RandomForestClassifier(),
+        AdaBoostClassifier(),
+        BaggingClassifier(),
+        SVMClassifier(),
     ],
-    meta_classifier=LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_1_layer_1_lr_stack_cv.model'),
+    meta_classifier=LogisticRegression(),
+    force_cv=False#默认为True,会对base_classifiers，meta_classifier进行KFolds_Classifier_Training_Wrapper包装
 )
 classifier.build_model()
 classifier.fit(train_x=X_train, train_y=y_train)
 p_test = classifier.predict(X_test)
-print('demo3-1 simple stack: ', f1_score(y_test, p_test, average='macro'))
+print(f1_score(y_test, p_test, average='macro'))
 ```
 
-Or you can use  ```force_cv=False``` to define single classifier wrapping with KFolds_Classifier_Training_Wrapper.
+    0.9111383714411929
+    
+
 
 ```python
 classifier = StackingClassifier(
     base_classifiers=[
-        KFolds_Classifier_Training_Wrapper(
-            RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_rf_stack_cv.model'),
-            k_fold=5),  # this base classifier will be wrapped only
-        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_ada_stack_cv.model'),
-        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_bag_stack_cv.model'),
-        SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_2_layer_2_svm_stack_cv.model'),
-    ],
-    meta_classifier=LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_2_layer_1_lr_stack_cv.model'),
-    force_cv=False
-)
-classifier.build_model()
-classifier.fit(train_x=X_train, train_y=y_train)
-p_test = classifier.predict(X_test)
-print('demo3-2 simple stack: ', f1_score(y_test, p_test, average='macro'))
-```
-
-**Deep Stacking classifier/regressor**
-
-You can find this stacking classifier/regressor is still packaged as a base classifier/regressor, so you can define deep stacking classifier/regressor.
-
-```python
-classifier = StackingClassifier(
-    base_classifiers=[
-        RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_rf_stack_cv.model'),
-        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_ada_stack_cv.model'),
-        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_bag_stack_cv.model'),
-        SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_2_svm_stack_cv.model'),
+        RandomForestClassifier(),
+        AdaBoostClassifier(),
+        BaggingClassifier(),
+        SVMClassifier(),
         StackingClassifier(
             base_classifiers=[
-                LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_3_layer_3_lr_stack_cv.model'),
-                RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_3_layer_3_rf_stack_cv.model'),
+                LogisticRegression(),
+                RandomForestClassifier(),
             ],
-            meta_classifier=GradientBoostingClassifier(
-                where_store_classifier_model='./classifier_model/demo_3_3_layer_3_gbdt_stack_cv.model'),
+            meta_classifier=GradientBoostingClassifier(),
         )
     ],
-    meta_classifier=LogisticRegression(
-        where_store_classifier_model='./classifier_model/demo_3_3_layer_1_lr_stack_cv.model'),
+    meta_classifier=LogisticRegression(),
+    base_k_fold=5,#基分类器分拆份数,force_cv=True时生效，
+    meta_k_fold=5,#元分类器分拆份数,force_cv=True时生效，
 )
 classifier.build_model()
 classifier.fit(train_x=X_train, train_y=y_train)
 p_test = classifier.predict(X_test)
-print('demo3-3 deep stack: ', f1_score(y_test, p_test, average='macro'))
+print(f1_score(y_test, p_test, average='macro'))
 ```
 
-Obviously, it can be wrapped.
+    0.9582916621008432
+    
+
+### 四.模型保存与加载
+
 
 ```python
-classifier = StackingClassifier(...)
-classifier=KFolds_Classifier_Training_Wrapper(classifier)
-...
+#保存
+classifier.save_model('./classifier_model/stacking.model')
 ```
 
-**Extensible Base/Meta Classifier/Regressor**
-
-You can overwrite the methods in in Classifer/Regressor to define yourself classifer/regressor.
 
 ```python
-from keras.utils.np_utils import to_categorical
-from keras.models import Sequential, load_model
-from keras.layers import  Dropout, Dense,Activation
+#加载
+new_classifier=Classifier.load_model('./classifier_model/stacking.model')
+```
+
+
+```python
+p_test = new_classifier.predict(X_test)
+print(f1_score(y_test, p_test, average='macro'))
+```
+
+    0.9582916621008432
+    
+
+### 五.自定义分类器
+这里使用Keras实现MLP来演示，由于Keras不是Sklearn风格的api，所以需要继承Classifier类
+
+
+```python
+from keras.models import Sequential
+from keras.layers import Dense,Dropout,Activation
 class SimpleMLPClassifer(Classifier):
-    def __init__(self, where_store_classifier_model=None, train_params=None):
+    def __init__(self, train_params=None):
         """
-        :param where_store_classifier_model:
         :param train_params:
         """
-        Classifier.__init__(self, where_store_classifier_model, train_params)
+        Classifier.__init__(self, train_params)
         self._check_params()
+
     def _check_params(self):
         if 'input_num' not in self.train_params:
             raise RuntimeError('no input_num param in train_params!')
@@ -174,6 +173,7 @@ class SimpleMLPClassifer(Classifier):
             self.train_params['shuffle'] = True
         if 'validation_split' not in self.train_params:
             self.train_params['validation_split'] = 0.05
+
     def build_model(self):
         self.classifier_model = Sequential()
         self.classifier_model.add(Dense(512, input_shape=(self.train_params['input_num'],)))
@@ -182,30 +182,30 @@ class SimpleMLPClassifer(Classifier):
         self.classifier_model.add(Dense(self.train_params['class_num']))
         self.classifier_model.add(Activation('softmax'))
         self.classifier_model.compile(loss='categorical_crossentropy',
-                      optimizer='adam',
-                      metrics=['accuracy'])
+                                      optimizer='adam',
+                                      metrics=['accuracy'])
 
     def fit(self, train_x, train_y):
-        self.classifier_model.fit(x=train_x, y=to_categorical(train_y, self.train_params['class_num']),
+        self.classifier_model.fit(x=train_x, y=utils.to_categorical(train_y, self.train_params['class_num']),
                                   batch_size=self.train_params['batch_size'], epochs=self.train_params['epochs'],
                                   validation_split=self.train_params['validation_split'],
                                   shuffle=self.train_params['shuffle'],
                                   verbose=False)
 
     def predict_categorical(self, test_x):
-        categorical_labels=self.classifier_model.predict(test_x, batch_size=test_x.shape[0])
-        new_categorical_result=np.zeros(shape=categorical_labels.shape)
-        for index in range(0,len(categorical_labels)):
-            categorical_label=categorical_labels[index].tolist()
-            maxvalue_index=categorical_label.index(max(categorical_label))
-            new_categorical_result[index][maxvalue_index]=1
+        categorical_labels = self.classifier_model.predict(test_x, batch_size=test_x.shape[0])
+        new_categorical_result = np.zeros(shape=categorical_labels.shape)
+        for index in range(0, len(categorical_labels)):
+            categorical_label = categorical_labels[index].tolist()
+            maxvalue_index = categorical_label.index(max(categorical_label))
+            new_categorical_result[index][maxvalue_index] = 1
         return new_categorical_result
 
     def predict(self, test_x):
         p_categorical_probas = self.predict_categorical_proba(test_x)
-        result=[]
+        result = []
         for categorical_proba in p_categorical_probas:
-            categorical_proba=categorical_proba.tolist()
+            categorical_proba = categorical_proba.tolist()
             result.append(categorical_proba.index(max(categorical_proba)))
         return np.asarray(result)
 
@@ -219,39 +219,43 @@ class SimpleMLPClassifer(Classifier):
             return probas
         else:
             return np.asarray([[1 - proba, proba] for proba in probas])
-
-    def save_model(self):
-        self.classifier_model.save(self.classifier_model_path)
-
-    def load_model(self):
-        self.classifier_model = load_model(self.classifier_model_path)
 ```
 
-The self-defined model can be user for base/meta classifier/regressor.
+    Using TensorFlow backend.
+    
+
 
 ```python
+#然后就可以嵌入到Stacking中了
 classifier = StackingClassifier(
     base_classifiers=[
-        RandomForestClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_rf_stack_cv.model'),
-        AdaBoostClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_ada_stack_cv.model'),
-        BaggingClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_bag_stack_cv.model'),
-        SVMClassifier(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_svm_stack_cv.model'),
-        SimpleMLPClassifer(where_store_classifier_model='./classifier_model/demo_3_4_layer_2_mlp_stack_cv.model',train_params={'input_num':64,'class_num':10})
+        RandomForestClassifier(),
+        AdaBoostClassifier(),
+        BaggingClassifier(),
+        SVMClassifier(),
+        StackingClassifier(
+            base_classifiers=[
+                SimpleMLPClassifer(train_params={'input_num': 64, 'class_num': 10}),#放这儿
+                RandomForestClassifier(),
+            ],
+            meta_classifier=GradientBoostingClassifier(),
+        )
     ],
-    meta_classifier=LogisticRegression(where_store_classifier_model='./classifier_model/demo_3_4_layer_1_lr_stack_cv.model'),
+    meta_classifier=LogisticRegression()
 )
 classifier.build_model()
 classifier.fit(train_x=X_train, train_y=y_train)
 p_test = classifier.predict(X_test)
-print('demo3-4 simple stack: ', f1_score(y_test, p_test, average='macro'))
+print(f1_score(y_test, p_test, average='macro'))
 ```
 
-Or wrapping.
+    0.9496740862763298
+    
 
-```python
-classifier=SimpleMLPClassifer(...)
-classifier=KFolds_Classifier_Training_Wrapper(classifier)
-...
-```
-
-**For more details, you can view the \*_examples.py**
+### 六.回归
+回归的操作与Classifier类似，不再赘述，下面列一下对应关系：  
+stacking_classifier->stacking_regressor   
+Classifier->Regressor  
+SklearnClassifier->SklearnRegressor  
+KFolds_Classifier_Training_Wrapper->KFolds_Regressor_Training_Wrapper  
+StackingClassifier->StackingRegressor  
