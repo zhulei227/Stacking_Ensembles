@@ -17,14 +17,15 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.7, random_
 ```
 
 ### 一.基本分类器的使用
-这里所有的分类器都需要实现Classifier类的接口，如果你是使用的Sklearn风格的分类器，只需要做如下操作即可，这里默认封装了SVMClassifier,RandomForestClassifier,GradientBoostingClassifier,AdaBoostClassifier,BaggingClassifier,LogisticRegression,NaiveBayesClassifier等分类器
+这里所有的分类器都需要实现Classifier类的接口，如果你是使用的Sklearn风格的分类器，只需要做如下操作即可，stacking_classifier中默认封装了SVMClassifier,RandomForestClassifier,GradientBoostingClassifier,AdaBoostClassifier,BaggingClassifier,LogisticRegression,NaiveBayesClassifier等分类器
 
 
 ```python
 class AdaBoostClassifier(SklearnClassifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         from sklearn.ensemble import AdaBoostClassifier
-        SklearnClassifier.__init__(self, train_params, AdaBoostClassifier)
+        SklearnClassifier.__init__(self, train_params, AdaBoostClassifier, subsample_features_rate,
+                                   subsample_features_indices)
 ```
 
 
@@ -52,7 +53,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9275689728048707
+    0.9268797312967999
     
 
 
@@ -66,11 +67,11 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9361513960332069
+    0.944350402788228
     
 
 ### 三.StackingClassifier分类器的使用
-```StackingClassifier```中的基分类器和元分类器可以是任意实现了Classifier，由于```KFolds_Classifier_Training_Wrapper```以及```StackingClassifier```都继承了```Classifier```接口，所以意味着你可以任意嵌套...
+```StackingClassifier```中的基分类器和元分类器可以是任意继承了Classifier类的子类，由于```KFolds_Classifier_Training_Wrapper```以及```StackingClassifier```都继承了```Classifier```类，所以意味着你可以任意嵌套...
 
 
 ```python
@@ -90,7 +91,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9111383714411929
+    0.9332683565603823
     
 
 
@@ -119,10 +120,41 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9582916621008432
+    0.9582680143374441
     
 
-### 四.模型保存与加载
+### 四.随机/指定选择训练和预测的feature
+可以随机选择，指定选择训练的feature
+
+
+```python
+classifier = StackingClassifier(
+    base_classifiers=[
+        RandomForestClassifier(subsample_features_indices=[1,4,7,8]),#指定只使用第1,4,7,8列特征用于训练和预测,上层的参数不会覆盖此参数
+        AdaBoostClassifier(subsample_features_rate=0.1),#随机选择10%的特征用于训练和预测,上层的参数不会覆盖此参数
+        BaggingClassifier(),
+        SVMClassifier(),
+        StackingClassifier(
+            base_classifiers=[
+                LogisticRegression(),
+                RandomForestClassifier(),
+            ],
+            meta_classifier=GradientBoostingClassifier(),
+        )
+    ],
+    meta_classifier=LogisticRegression(),
+    subsample_features_rate=0.5#该参数会向下传递到最底层的所有未指定subsample_features_rate参数的分类器，subsample_features_indices同理
+)
+classifier.build_model()
+classifier.fit(train_x=X_train, train_y=y_train)
+p_test = classifier.predict(X_test)
+print(f1_score(y_test, p_test, average='macro'))
+```
+
+    0.9557944315358944
+    
+
+### 五.模型保存与加载
 
 
 ```python
@@ -142,10 +174,10 @@ p_test = new_classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9582916621008432
+    0.9557944315358944
     
 
-### 五.自定义分类器
+### 六.自定义分类器
 这里使用Keras实现MLP来演示，由于Keras不是Sklearn风格的api，所以需要继承Classifier类
 
 
@@ -249,10 +281,10 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9496740862763298
+    0.9473223968636466
     
 
-### 六.回归
+### 七.回归
 回归的操作与Classifier类似，不再赘述，下面列一下对应关系：  
 stacking_classifier->stacking_regressor   
 Classifier->Regressor  

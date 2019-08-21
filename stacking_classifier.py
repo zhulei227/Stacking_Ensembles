@@ -3,8 +3,8 @@ import numpy as np
 import pickle
 import utils
 import copy
+import random
 import warnings
-
 warnings.filterwarnings("ignore")
 
 """
@@ -17,11 +17,28 @@ class Classifier(object):
     定义分类器接口
     """
 
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         """
         :param train_params: 训练参数
         """
         self.train_params = {} if train_params is None else train_params
+        self.subsample_features_rate = subsample_features_rate
+        self.subsample_features_indices = subsample_features_indices
+
+    def reshape_features(self, features):
+        """
+        读取features指定列用于训练或者随机选择某几列训练
+        :param features:
+        :return:
+        """
+        if self.subsample_features_indices is None and self.subsample_features_rate is not None:
+            _, columns = features.shape
+            indices = list(range(0, columns))
+            random.shuffle(indices)
+            self.subsample_features_indices = indices[:int(columns * self.subsample_features_rate)]
+        if self.subsample_features_indices is not None:
+            return features[:, self.subsample_features_indices]
+        return features
 
     def build_model(self):
         """
@@ -91,8 +108,9 @@ class SklearnClassifier(Classifier):
     基于sklearn api的classifier实现
     """
 
-    def __init__(self, train_params=None, classifier_class=None):
-        Classifier.__init__(self, train_params)
+    def __init__(self, train_params=None, classifier_class=None, subsample_features_rate=None,
+                 subsample_features_indices=None):
+        Classifier.__init__(self, train_params, subsample_features_rate, subsample_features_indices)
         self.classifier_class = classifier_class
 
     def build_model(self):
@@ -101,19 +119,19 @@ class SklearnClassifier(Classifier):
     def fit(self, train_x, train_y):
 
         self.class_num = len(set(train_y))
-        self.classifier_model.fit(train_x, train_y)
+        self.classifier_model.fit(self.reshape_features(train_x), train_y)
 
     def predict(self, test_x):
-        return self.classifier_model.predict(test_x)
+        return self.classifier_model.predict(self.reshape_features(test_x))
 
     def predict_categorical(self, test_x):
         return utils.to_categorical(self.predict(test_x), self.class_num)
 
     def predict_proba(self, test_x):
-        return self.classifier_model.predict_proba(test_x)
+        return self.classifier_model.predict_proba(self.reshape_features(test_x))
 
     def predict_categorical_proba(self, test_x):
-        probas = self.classifier_model.predict_proba(test_x)
+        probas = self.classifier_model.predict_proba(self.reshape_features(test_x))
         _, col = probas.shape
         if col > 1:
             return probas
@@ -122,49 +140,54 @@ class SklearnClassifier(Classifier):
 
 
 class SVMClassifier(SklearnClassifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         from sklearn.svm import SVC
         if train_params is None:
             train_params = {'probability': True}
         else:
             train_params['probability'] = True
-        SklearnClassifier.__init__(self, train_params, SVC)
+        SklearnClassifier.__init__(self, train_params, SVC, subsample_features_rate, subsample_features_indices)
 
 
 class RandomForestClassifier(SklearnClassifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         from sklearn.ensemble import RandomForestClassifier
-        SklearnClassifier.__init__(self, train_params, RandomForestClassifier)
+        SklearnClassifier.__init__(self, train_params, RandomForestClassifier, subsample_features_rate,
+                                   subsample_features_indices)
 
 
 class GradientBoostingClassifier(SklearnClassifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         from sklearn.ensemble import GradientBoostingClassifier
-        SklearnClassifier.__init__(self, train_params, GradientBoostingClassifier)
+        SklearnClassifier.__init__(self, train_params, GradientBoostingClassifier, subsample_features_rate,
+                                   subsample_features_indices)
 
 
 class AdaBoostClassifier(SklearnClassifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         from sklearn.ensemble import AdaBoostClassifier
-        SklearnClassifier.__init__(self, train_params, AdaBoostClassifier)
+        SklearnClassifier.__init__(self, train_params, AdaBoostClassifier, subsample_features_rate,
+                                   subsample_features_indices)
 
 
 class BaggingClassifier(SklearnClassifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         from sklearn.ensemble import BaggingClassifier
-        SklearnClassifier.__init__(self, train_params, BaggingClassifier)
+        SklearnClassifier.__init__(self, train_params, BaggingClassifier, subsample_features_rate,
+                                   subsample_features_indices)
 
 
 class LogisticRegression(SklearnClassifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         from sklearn.linear_model import LogisticRegression
-        SklearnClassifier.__init__(self, train_params, LogisticRegression)
+        SklearnClassifier.__init__(self, train_params, LogisticRegression, subsample_features_rate,
+                                   subsample_features_indices)
 
 
 class NaiveBayesClassifier(SklearnClassifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
         from sklearn.naive_bayes import GaussianNB
-        SklearnClassifier.__init__(self, train_params, GaussianNB)
+        SklearnClassifier.__init__(self, train_params, GaussianNB, subsample_features_rate, subsample_features_indices)
 
 
 class KFolds_Classifier_Training_Wrapper(Classifier):
@@ -172,7 +195,8 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
     对训练的分类器进行交叉式训练，是对原始分类器的扩展，可独立使用
     '''
 
-    def __init__(self, base_classifer=None, k_fold=5, random_state=42):
+    def __init__(self, base_classifer=None, k_fold=5, random_state=42, subsample_features_rate=None,
+                 subsample_features_indices=None):
         """
 
         :param base_classifer:
@@ -182,6 +206,13 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
         self.base_classifier = base_classifer
         self.k_fold = k_fold
         self.random_state = random_state
+        # 将subsample_features_rate,subsample_features_indices参数向下传递给具体的base_classifier
+        self.subsample_features_rate = subsample_features_rate
+        self.subsample_features_indices = subsample_features_indices
+        if base_classifer.subsample_features_rate is None:
+            base_classifer.subsample_features_rate = self.subsample_features_rate
+        if base_classifer.subsample_features_indices is None:
+            base_classifer.subsample_features_indices = self.subsample_features_indices
 
     def build_model(self):
         """
@@ -296,7 +327,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
 
 class StackingClassifier(Classifier):
     def __init__(self, base_classifiers=list(), meta_classifier=None, use_probas=True, force_cv=True, base_k_fold=5,
-                 meta_k_fold=5):
+                 meta_k_fold=5, subsample_features_rate=None, subsample_features_indices=None):
         """
         为cv训练方式提供更好的支持
 
@@ -321,6 +352,15 @@ class StackingClassifier(Classifier):
                                                                                       k_fold=base_k_fold)
             if not isinstance(self.meta_classifier, KFolds_Classifier_Training_Wrapper):
                 self.meta_classifier = KFolds_Classifier_Training_Wrapper(self.meta_classifier, k_fold=meta_k_fold)
+
+        # subsample_features_rate,subsample_features_indices参数向下传递给具体的base_classifiers
+        self.subsample_features_rate = subsample_features_rate
+        self.subsample_features_indices = subsample_features_indices
+        for base_classifier in base_classifiers:
+            if base_classifier.subsample_features_rate is None:
+                base_classifier.subsample_features_rate = self.subsample_features_rate
+            if base_classifier.subsample_features_indices is None:
+                base_classifier.subsample_features_indices = self.subsample_features_indices
 
     def _build_base_classifier_models(self):
         """
