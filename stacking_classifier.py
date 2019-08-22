@@ -1,10 +1,11 @@
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 import numpy as np
 import pickle
 import utils
 import copy
 import random
 import warnings
+
 warnings.filterwarnings("ignore")
 
 """
@@ -17,13 +18,15 @@ class Classifier(object):
     定义分类器接口
     """
 
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         """
         :param train_params: 训练参数
         """
         self.train_params = {} if train_params is None else train_params
         self.subsample_features_rate = subsample_features_rate
         self.subsample_features_indices = subsample_features_indices
+        self.categorical_feature_indices = categorical_feature_indices
 
     def reshape_features(self, features):
         """
@@ -31,14 +34,48 @@ class Classifier(object):
         :param features:
         :return:
         """
+        _, columns = features.shape
+        indices = list(range(0, columns))
+        # 默认会排除字符串变量
+        no_categorical_feature_indices = []
+        if self.categorical_feature_indices is not None:
+            for index in indices:
+                if index not in self.categorical_feature_indices:
+                    no_categorical_feature_indices.append(index)
+        else:
+            no_categorical_feature_indices = indices
+
         if self.subsample_features_indices is None and self.subsample_features_rate is not None:
-            _, columns = features.shape
-            indices = list(range(0, columns))
-            random.shuffle(indices)
-            self.subsample_features_indices = indices[:int(columns * self.subsample_features_rate)]
+            random.shuffle(no_categorical_feature_indices)
+            self.subsample_features_indices = no_categorical_feature_indices[
+                                              :int(len(no_categorical_feature_indices) * self.subsample_features_rate)]
         if self.subsample_features_indices is not None:
             return features[:, self.subsample_features_indices]
-        return features
+        return features[:, no_categorical_feature_indices]
+
+    @staticmethod
+    def update_params(current_classifier, subsample_features_rate, subsample_features_indices,
+                      categorical_feature_indices):
+        '''
+        递归向下更新参数
+        :return:
+        '''
+        if current_classifier.subsample_features_rate is None:
+            current_classifier.subsample_features_rate = subsample_features_rate
+        if current_classifier.subsample_features_indices is None:
+            current_classifier.subsample_features_indices = subsample_features_indices
+        if current_classifier.categorical_feature_indices is None:
+            current_classifier.categorical_feature_indices = categorical_feature_indices
+
+        if current_classifier.__class__.__name__ == 'KFolds_Classifier_Training_Wrapper':
+            Classifier.update_params(current_classifier.base_classifier, current_classifier.subsample_features_rate,
+                                     current_classifier.subsample_features_indices,
+                                     current_classifier.categorical_feature_indices)
+        if current_classifier.__class__.__name__ == 'StackingClassifier':
+            for base_classifier in current_classifier.base_classifiers:
+                Classifier.update_params(base_classifier, current_classifier.subsample_features_rate,
+                                         current_classifier.subsample_features_indices,
+                                         current_classifier.categorical_feature_indices)
 
     def build_model(self):
         """
@@ -109,8 +146,9 @@ class SklearnClassifier(Classifier):
     """
 
     def __init__(self, train_params=None, classifier_class=None, subsample_features_rate=None,
-                 subsample_features_indices=None):
-        Classifier.__init__(self, train_params, subsample_features_rate, subsample_features_indices)
+                 subsample_features_indices=None, categorical_feature_indices=None):
+        Classifier.__init__(self, train_params, subsample_features_rate, subsample_features_indices,
+                            categorical_feature_indices)
         self.classifier_class = classifier_class
 
     def build_model(self):
@@ -119,7 +157,7 @@ class SklearnClassifier(Classifier):
     def fit(self, train_x, train_y):
 
         self.class_num = len(set(train_y))
-        self.classifier_model.fit(self.reshape_features(train_x), train_y)
+        self.classifier_model.fit(self.reshape_features(train_x).astype('float64'), train_y)
 
     def predict(self, test_x):
         return self.classifier_model.predict(self.reshape_features(test_x))
@@ -128,10 +166,10 @@ class SklearnClassifier(Classifier):
         return utils.to_categorical(self.predict(test_x), self.class_num)
 
     def predict_proba(self, test_x):
-        return self.classifier_model.predict_proba(self.reshape_features(test_x))
+        return self.classifier_model.predict_proba(self.reshape_features(test_x).astype('float64'))
 
     def predict_categorical_proba(self, test_x):
-        probas = self.classifier_model.predict_proba(self.reshape_features(test_x))
+        probas = self.classifier_model.predict_proba(self.reshape_features(test_x).astype('float64'))
         _, col = probas.shape
         if col > 1:
             return probas
@@ -140,54 +178,63 @@ class SklearnClassifier(Classifier):
 
 
 class SVMClassifier(SklearnClassifier):
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         from sklearn.svm import SVC
         if train_params is None:
             train_params = {'probability': True}
         else:
             train_params['probability'] = True
-        SklearnClassifier.__init__(self, train_params, SVC, subsample_features_rate, subsample_features_indices)
+        SklearnClassifier.__init__(self, train_params, SVC, subsample_features_rate, subsample_features_indices,
+                                   categorical_feature_indices)
 
 
 class RandomForestClassifier(SklearnClassifier):
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         from sklearn.ensemble import RandomForestClassifier
         SklearnClassifier.__init__(self, train_params, RandomForestClassifier, subsample_features_rate,
-                                   subsample_features_indices)
+                                   subsample_features_indices, categorical_feature_indices)
 
 
 class GradientBoostingClassifier(SklearnClassifier):
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         from sklearn.ensemble import GradientBoostingClassifier
         SklearnClassifier.__init__(self, train_params, GradientBoostingClassifier, subsample_features_rate,
-                                   subsample_features_indices)
+                                   subsample_features_indices, categorical_feature_indices)
 
 
 class AdaBoostClassifier(SklearnClassifier):
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         from sklearn.ensemble import AdaBoostClassifier
         SklearnClassifier.__init__(self, train_params, AdaBoostClassifier, subsample_features_rate,
-                                   subsample_features_indices)
+                                   subsample_features_indices, categorical_feature_indices)
 
 
 class BaggingClassifier(SklearnClassifier):
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         from sklearn.ensemble import BaggingClassifier
         SklearnClassifier.__init__(self, train_params, BaggingClassifier, subsample_features_rate,
-                                   subsample_features_indices)
+                                   subsample_features_indices, categorical_feature_indices)
 
 
 class LogisticRegression(SklearnClassifier):
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         from sklearn.linear_model import LogisticRegression
         SklearnClassifier.__init__(self, train_params, LogisticRegression, subsample_features_rate,
-                                   subsample_features_indices)
+                                   subsample_features_indices, categorical_feature_indices)
 
 
 class NaiveBayesClassifier(SklearnClassifier):
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         from sklearn.naive_bayes import GaussianNB
-        SklearnClassifier.__init__(self, train_params, GaussianNB, subsample_features_rate, subsample_features_indices)
+        SklearnClassifier.__init__(self, train_params, GaussianNB, subsample_features_rate, subsample_features_indices,
+                                   categorical_feature_indices)
 
 
 class KFolds_Classifier_Training_Wrapper(Classifier):
@@ -196,7 +243,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
     '''
 
     def __init__(self, base_classifer=None, k_fold=5, random_state=42, subsample_features_rate=None,
-                 subsample_features_indices=None):
+                 subsample_features_indices=None, categorical_feature_indices=None):
         """
 
         :param base_classifer:
@@ -206,13 +253,8 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
         self.base_classifier = base_classifer
         self.k_fold = k_fold
         self.random_state = random_state
-        # 将subsample_features_rate,subsample_features_indices参数向下传递给具体的base_classifier
-        self.subsample_features_rate = subsample_features_rate
-        self.subsample_features_indices = subsample_features_indices
-        if base_classifer.subsample_features_rate is None:
-            base_classifer.subsample_features_rate = self.subsample_features_rate
-        if base_classifer.subsample_features_indices is None:
-            base_classifer.subsample_features_indices = self.subsample_features_indices
+        # subsample_features_rate,subsample_features_indices,categorical_feature_indices参数向下递归传递给具体的base_classifiers
+        Classifier.update_params(self, subsample_features_rate, subsample_features_indices, categorical_feature_indices)
 
     def build_model(self):
         """
@@ -327,7 +369,8 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
 
 class StackingClassifier(Classifier):
     def __init__(self, base_classifiers=list(), meta_classifier=None, use_probas=True, force_cv=True, base_k_fold=5,
-                 meta_k_fold=5, subsample_features_rate=None, subsample_features_indices=None):
+                 meta_k_fold=5, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         """
         为cv训练方式提供更好的支持
 
@@ -353,14 +396,8 @@ class StackingClassifier(Classifier):
             if not isinstance(self.meta_classifier, KFolds_Classifier_Training_Wrapper):
                 self.meta_classifier = KFolds_Classifier_Training_Wrapper(self.meta_classifier, k_fold=meta_k_fold)
 
-        # subsample_features_rate,subsample_features_indices参数向下传递给具体的base_classifiers
-        self.subsample_features_rate = subsample_features_rate
-        self.subsample_features_indices = subsample_features_indices
-        for base_classifier in base_classifiers:
-            if base_classifier.subsample_features_rate is None:
-                base_classifier.subsample_features_rate = self.subsample_features_rate
-            if base_classifier.subsample_features_indices is None:
-                base_classifier.subsample_features_indices = self.subsample_features_indices
+        # subsample_features_rate,subsample_features_indices,categorical_feature_indices参数向下递归传递给具体的base_classifiers
+        Classifier.update_params(self, subsample_features_rate, subsample_features_indices, categorical_feature_indices)
 
     def _build_base_classifier_models(self):
         """
@@ -501,3 +538,176 @@ class StackingClassifier(Classifier):
         return self.meta_classifier.predict_categorical_proba(self._combine_base_classifier_predict_categorical_proba(
             test_x)) if self.use_probas else self.meta_classifier.predict_categorical_proba(
             self._combine_base_classifier_predict_categorical(test_x))
+
+
+'''
+LightGBMClassifier封装,主要是对添加进的categorical_feature进行处理，
+注意：categorical_feature可以是int、float、str类型，如果是str必须是数值，比如'1','2',而不能是'x','y'
+更多：https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.LGBMClassifier.html#
+'''
+
+
+class LightGBMClassifier(SklearnClassifier):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
+        from lightgbm import LGBMClassifier
+        SklearnClassifier.__init__(self, train_params, LGBMClassifier, subsample_features_rate,
+                                   subsample_features_indices, categorical_feature_indices=None)
+        self.self_define_categorical_feature_indices = categorical_feature_indices
+
+    # 由于LGBMClassifier允许字符串变量，这里需要重写reshape_features
+    def reshape_features(self, features):
+        """
+        读取features指定列用于训练或者随机选择某几列训练
+        :param features:
+        :return:
+        """
+        self.training_categorical_feature_indices = None
+        _, columns = features.shape
+        indices = list(range(0, columns))
+        # 默认会排除字符串变量
+        no_categorical_feature_indices = []
+        if self.categorical_feature_indices is not None or self.self_define_categorical_feature_indices is not None:
+            combine_categorical_feature_indices = set(
+                [] if self.categorical_feature_indices is None else self.categorical_feature_indices) | set(
+                [] if self.self_define_categorical_feature_indices is None else self.self_define_categorical_feature_indices)
+            for index in indices:
+                if index not in combine_categorical_feature_indices:
+                    no_categorical_feature_indices.append(index)
+        else:
+            no_categorical_feature_indices = indices
+
+        if self.subsample_features_indices is None and self.subsample_features_rate is not None:
+            random.shuffle(no_categorical_feature_indices)
+            self.subsample_features_indices = no_categorical_feature_indices[
+                                              :int(len(no_categorical_feature_indices) * self.subsample_features_rate)]
+        # 单独将categorical_feature放到最前面
+        if self.self_define_categorical_feature_indices is not None:
+            top_categorical_feature_indices = self.self_define_categorical_feature_indices
+        else:
+            top_categorical_feature_indices = self.categorical_feature_indices
+
+        if self.subsample_features_indices is not None:
+            if top_categorical_feature_indices is None:
+                return features[:, self.subsample_features_indices]
+            else:
+                self.training_categorical_feature_indices = list(range(0, len(top_categorical_feature_indices)))
+                return np.concatenate(
+                    [features[:, top_categorical_feature_indices], features[:, self.subsample_features_indices]],
+                    axis=1)
+        if top_categorical_feature_indices is None:
+            return features[:, no_categorical_feature_indices]
+        else:
+            self.training_categorical_feature_indices = list(range(0, len(top_categorical_feature_indices)))
+            return np.concatenate(
+                [features[:, top_categorical_feature_indices], features[:, no_categorical_feature_indices]],
+                axis=1)
+
+    # 添加是否有离散值情况的判断
+    def fit(self, train_x, train_y):
+        self.class_num = len(set(train_y))
+        reshape_train_x = self.reshape_features(train_x)
+        if self.training_categorical_feature_indices is None:
+            self.classifier_model.fit(reshape_train_x, train_y)
+        else:
+            self.classifier_model.fit(reshape_train_x, train_y,
+                                      categorical_feature=self.training_categorical_feature_indices)
+
+    # 允许numpy中含有字符串
+    def predict_proba(self, test_x):
+        return self.classifier_model.predict_proba(self.reshape_features(test_x))
+
+    def predict_categorical_proba(self, test_x):
+        probas = self.classifier_model.predict_proba(self.reshape_features(test_x))
+        _, col = probas.shape
+        if col > 1:
+            return probas
+        else:
+            return np.asarray([[1 - proba, proba] for proba in probas])
+
+
+'''
+对CatBoostClassifier封装
+'''
+
+
+class CatBoostClassifier(SklearnClassifier):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
+        from catboost import CatBoostClassifier
+        SklearnClassifier.__init__(self, train_params, CatBoostClassifier, subsample_features_rate,
+                                   subsample_features_indices, categorical_feature_indices=None)
+        self.self_define_categorical_feature_indices = categorical_feature_indices
+
+    # 由于CatBoostClassifier允许字符串变量，这里需要重写reshape_features
+    def reshape_features(self, features):
+        """
+        读取features指定列用于训练或者随机选择某几列训练
+        :param features:
+        :return:
+        """
+        self.training_categorical_feature_indices = None
+        _, columns = features.shape
+        indices = list(range(0, columns))
+        # 默认会排除字符串变量
+        no_categorical_feature_indices = []
+        if self.categorical_feature_indices is not None or self.self_define_categorical_feature_indices is not None:
+            combine_categorical_feature_indices = set(
+                [] if self.categorical_feature_indices is None else self.categorical_feature_indices) | set(
+                [] if self.self_define_categorical_feature_indices is None else self.self_define_categorical_feature_indices)
+            for index in indices:
+                if index not in combine_categorical_feature_indices:
+                    no_categorical_feature_indices.append(index)
+        else:
+            no_categorical_feature_indices = indices
+
+        if self.subsample_features_indices is None and self.subsample_features_rate is not None:
+            random.shuffle(no_categorical_feature_indices)
+            self.subsample_features_indices = no_categorical_feature_indices[
+                                              :int(len(no_categorical_feature_indices) * self.subsample_features_rate)]
+        # 单独将categorical_feature放到最前面
+        if self.self_define_categorical_feature_indices is not None:
+            top_categorical_feature_indices = self.self_define_categorical_feature_indices
+        else:
+            top_categorical_feature_indices = self.categorical_feature_indices
+
+        if self.subsample_features_indices is not None:
+            if top_categorical_feature_indices is None:
+                return features[:, self.subsample_features_indices]
+            else:
+                self.training_categorical_feature_indices = list(range(0, len(top_categorical_feature_indices)))
+                return np.concatenate(
+                    [features[:, top_categorical_feature_indices], features[:, self.subsample_features_indices]],
+                    axis=1)
+        if top_categorical_feature_indices is None:
+            return features[:, no_categorical_feature_indices]
+        else:
+            self.training_categorical_feature_indices = list(range(0, len(top_categorical_feature_indices)))
+            return np.concatenate(
+                [features[:, top_categorical_feature_indices], features[:, no_categorical_feature_indices]],
+                axis=1)
+
+    # 添加是否有离散值情况的判断
+    def fit(self, train_x, train_y):
+        self.class_num = len(set(train_y))
+        reshape_train_x = self.reshape_features(train_x)
+        # 切分一部分出来做eval data
+        X_new_train, X_new_eval, y_new_train, y_new_eval = train_test_split(reshape_train_x, train_y)
+        if self.training_categorical_feature_indices is None:
+            self.classifier_model.fit(X_new_train, y_new_train, eval_set=(X_new_eval, y_new_eval), use_best_model=True,
+                                      verbose=False)
+        else:
+            self.classifier_model.fit(X_new_train, y_new_train, eval_set=(X_new_eval, y_new_eval), use_best_model=True,
+                                      cat_features=self.training_categorical_feature_indices, verbose=False)
+
+    # 允许numpy中含有字符串
+    def predict_proba(self, test_x):
+        return self.classifier_model.predict_proba(self.reshape_features(test_x))
+
+    def predict_categorical_proba(self, test_x):
+        probas = self.classifier_model.predict_proba(self.reshape_features(test_x))
+        _, col = probas.shape
+        if col > 1:
+            return probas
+        else:
+            return np.asarray([[1 - proba, proba] for proba in probas])

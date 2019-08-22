@@ -1,7 +1,8 @@
 
 ### 特点
-（1）通过实现Classifier/SklearnClassifier接口（SklearnClassifier是Classifier的子类），可以方便将分类器扩展到Sklearn,Keras等其他开源工具；  
+（1）方便扩展，比如扩展Sklearn,Keras,CatBoost等工具（只需继承stacking_classifier中的Classifier类，并实现相应方法即可）；  
 （2）可以构建很深，很复杂的stacking结构  
+（3）支持离散变量（为了方便lightgbm,catboost）
 
 接下来，我在手写数值识别上演示api使用示例：  
 
@@ -17,15 +18,16 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.7, random_
 ```
 
 ### 一.基本分类器的使用
-这里所有的分类器都需要实现Classifier类的接口，如果你是使用的Sklearn风格的分类器，只需要做如下操作即可，stacking_classifier中默认封装了SVMClassifier,RandomForestClassifier,GradientBoostingClassifier,AdaBoostClassifier,BaggingClassifier,LogisticRegression,NaiveBayesClassifier等分类器
+这里所有的分类器都需要实现Classifier类的接口，如果你是使用的Sklearn风格的分类器，只需要做如下操作即可，stacking_classifier中默认封装了SVMClassifier,RandomForestClassifier,GradientBoostingClassifier,AdaBoostClassifier,BaggingClassifier,LogisticRegression,NaiveBayesClassifier,LightGBMClassifier,CatBoostClassifier等分类器
 
 
 ```python
-class AdaBoostClassifier(SklearnClassifier):
-    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None):
+class AdaBoostClassifier(SklearnClassifier):#SklearnClassifier是Classifier的子类
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         from sklearn.ensemble import AdaBoostClassifier
         SklearnClassifier.__init__(self, train_params, AdaBoostClassifier, subsample_features_rate,
-                                   subsample_features_indices)
+                                   subsample_features_indices, categorical_feature_indices)
 ```
 
 
@@ -53,7 +55,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9268797312967999
+    0.9310675399372144
     
 
 
@@ -67,7 +69,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.944350402788228
+    0.9384517951950961
     
 
 ### 三.StackingClassifier分类器的使用
@@ -91,7 +93,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9332683565603823
+    0.9131632832074115
     
 
 
@@ -120,11 +122,11 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9582680143374441
+    0.9574818260465839
     
 
 ### 四.随机/指定选择训练和预测的feature
-可以随机选择，指定选择训练的feature
+可以随机选择，通过```subsample_features_indices```指定选择训练的feature,```subsample_features_rate```随机选择训练的feature
 
 
 ```python
@@ -151,33 +153,107 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9557944315358944
+    0.9529487800427022
     
 
-### 五.模型保存与加载
+### 五.支持离散变量的输入
+这里为了方便lightgbm,catboost操作而支持离散变量类型,注意：  
+（1）**必须在最顶层指定str/object类型的变量**（这样底层不支持str/object类型的分类器才能过滤掉这些特征）；  
+（2）lightgbm不支持'x','y','z'这种类型的离散变量，只支持‘1’,'2','3'或者int/float类型的离散变量，所以有时需要单独指定；  
+（3）如果指定了```categorical_feature_indices```参数，```subsample_features_rate,subsample_features_indices```退化为只对剩余的非```categorical_feature_indices```特征生效
 
 
 ```python
-#保存
-classifier.save_model('./classifier_model/stacking.model')
+#为原始数据添加两列：一列是数值的字符串，一列是随意的字符串
+import numpy as np
+new_column = np.asarray(['1'] * 1797)
+new_column2 = np.asarray(['x'] * 1797)
+X_new = np.concatenate([X, new_column.reshape(1797, 1), new_column2.reshape(1797, 1)], axis=1)
+X_new_train, X_new_test, y_new_train, y_new_test = train_test_split(X_new, y, test_size=0.7, random_state=42)
 ```
 
 
 ```python
-#加载
-new_classifier=Classifier.load_model('./classifier_model/stacking.model')
+X_new_train[0:1]
 ```
 
 
+
+
+    array([['0.0', '0.0', '10.0', '13.0', '9.0', '1.0', '0.0', '0.0', '0.0',
+            '2.0', '16.0', '7.0', '10.0', '8.0', '0.0', '0.0', '0.0', '0.0',
+            '12.0', '12.0', '7.0', '11.0', '0.0', '0.0', '0.0', '3.0',
+            '16.0', '16.0', '16.0', '7.0', '0.0', '0.0', '0.0', '0.0', '5.0',
+            '8.0', '12.0', '10.0', '1.0', '0.0', '0.0', '0.0', '0.0', '0.0',
+            '0.0', '11.0', '7.0', '0.0', '0.0', '0.0', '0.0', '0.0', '0.0',
+            '3.0', '15.0', '0.0', '0.0', '0.0', '11.0', '16.0', '16.0',
+            '16.0', '8.0', '0.0', '1', 'x']], dtype='<U32')
+
+
+
+
 ```python
-p_test = new_classifier.predict(X_test)
+classifier = StackingClassifier(
+    base_classifiers=[
+        RandomForestClassifier(subsample_features_indices=[1,4,7,8]),
+        AdaBoostClassifier(subsample_features_rate=0.1),
+        LogisticRegression(),
+        LightGBMClassifier(categorical_feature_indices=[64]),#第65列特征为'x','y'类型，ligthgbm底层不支持
+        CatBoostClassifier(train_params={'depth': 3, 'iterations': 50}),#若不自定义，由顶层传下来的categorical_feature_indices覆盖
+        StackingClassifier(
+            base_classifiers=[
+                LogisticRegression(),
+                RandomForestClassifier(),
+            ],
+            meta_classifier=GradientBoostingClassifier(),
+        )
+    ],
+    meta_classifier=LogisticRegression(),
+    subsample_features_rate=0.5,
+    categorical_feature_indices=[64,65],
+)
+classifier.build_model()
+classifier.fit(train_x=X_new_train, train_y=y_new_train)
+p_test = classifier.predict(X_new_test)
+print(f1_score(y_new_test, p_test, average='macro'))
+```
+
+    0.956272924068133
+    
+
+### 六.超参设置
+超参的设置通过```train_params```传入，具体参数的命名与底层封装的分类器一致，比如....
+
+
+```python
+classifier = StackingClassifier(
+    base_classifiers=[
+        RandomForestClassifier(subsample_features_indices=[1,4,7,8],train_params={'n_estimators':200}),
+        AdaBoostClassifier(subsample_features_rate=0.1),
+        LogisticRegression(train_params={'penalty':'l2','C':1.0}),
+        LightGBMClassifier(),
+        CatBoostClassifier(train_params={'depth': 3, 'iterations': 50}),
+        StackingClassifier(
+            base_classifiers=[
+                LogisticRegression(train_params={'C':2.0}),
+                RandomForestClassifier(),
+            ],
+            meta_classifier=GradientBoostingClassifier(),
+        )
+    ],
+    meta_classifier=LogisticRegression(),
+    subsample_features_rate=0.5,
+)
+classifier.build_model()
+classifier.fit(train_x=X_train, train_y=y_train)
+p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9557944315358944
+    0.9550316262302762
     
 
-### 六.自定义分类器
+### 七.自定义分类器
 这里使用Keras实现MLP来演示，由于Keras不是Sklearn风格的api，所以需要继承Classifier类
 
 
@@ -185,11 +261,13 @@ print(f1_score(y_test, p_test, average='macro'))
 from keras.models import Sequential
 from keras.layers import Dense,Dropout,Activation
 class SimpleMLPClassifer(Classifier):
-    def __init__(self, train_params=None):
+    def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
+                 categorical_feature_indices=None):
         """
         :param train_params:
         """
-        Classifier.__init__(self, train_params)
+        Classifier.__init__(self, train_params, subsample_features_rate,
+                                   subsample_features_indices, categorical_feature_indices)
         self._check_params()
 
     def _check_params(self):
@@ -261,13 +339,15 @@ class SimpleMLPClassifer(Classifier):
 #然后就可以嵌入到Stacking中了
 classifier = StackingClassifier(
     base_classifiers=[
+        LightGBMClassifier(),
+        CatBoostClassifier(),
         RandomForestClassifier(),
         AdaBoostClassifier(),
         BaggingClassifier(),
         SVMClassifier(),
         StackingClassifier(
             base_classifiers=[
-                SimpleMLPClassifer(train_params={'input_num': 64, 'class_num': 10}),#放这儿
+                SimpleMLPClassifer(train_params={'input_num':64,'class_num':10}),#比如放这儿
                 RandomForestClassifier(),
             ],
             meta_classifier=GradientBoostingClassifier(),
@@ -281,13 +361,38 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9473223968636466
+    0.9560193034240653
     
 
-### 七.回归
+### 八.模型保存与加载
+
+
+```python
+#保存
+classifier.save_model('./classifier_model/stacking.model')
+```
+
+
+```python
+#加载
+new_classifier=Classifier.load_model('./classifier_model/stacking.model')
+```
+
+
+```python
+p_test = new_classifier.predict(X_test)
+print(f1_score(y_test, p_test, average='macro'))
+```
+
+    0.9560193034240653
+    
+
+### 八.回归
 回归的操作与Classifier类似，不再赘述，下面列一下对应关系：  
 stacking_classifier->stacking_regressor   
 Classifier->Regressor  
 SklearnClassifier->SklearnRegressor  
 KFolds_Classifier_Training_Wrapper->KFolds_Regressor_Training_Wrapper  
 StackingClassifier->StackingRegressor  
+
+```subsample_features_rate,subsample_features_indices,categorical_feature_indices```的相关内容还为在回归中实现，后续更新...
