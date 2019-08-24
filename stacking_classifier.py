@@ -1,9 +1,12 @@
 from sklearn.model_selection import KFold, train_test_split
+from multiprocessing import Pool, cpu_count
+import threading
 import numpy as np
 import pickle
 import utils
 import copy
 import random
+import platform
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -19,7 +22,7 @@ class Classifier(object):
     """
 
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         """
         :param train_params: 训练参数
         """
@@ -27,6 +30,7 @@ class Classifier(object):
         self.subsample_features_rate = subsample_features_rate
         self.subsample_features_indices = subsample_features_indices
         self.categorical_feature_indices = categorical_feature_indices
+        self.n_jobs = n_jobs
 
     def reshape_features(self, features):
         """
@@ -146,9 +150,9 @@ class SklearnClassifier(Classifier):
     """
 
     def __init__(self, train_params=None, classifier_class=None, subsample_features_rate=None,
-                 subsample_features_indices=None, categorical_feature_indices=None):
+                 subsample_features_indices=None, categorical_feature_indices=None, n_jobs=1):
         Classifier.__init__(self, train_params, subsample_features_rate, subsample_features_indices,
-                            categorical_feature_indices)
+                            categorical_feature_indices, n_jobs)
         self.classifier_class = classifier_class
 
     def build_model(self):
@@ -179,62 +183,62 @@ class SklearnClassifier(Classifier):
 
 class SVMClassifier(SklearnClassifier):
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         from sklearn.svm import SVC
         if train_params is None:
             train_params = {'probability': True}
         else:
             train_params['probability'] = True
         SklearnClassifier.__init__(self, train_params, SVC, subsample_features_rate, subsample_features_indices,
-                                   categorical_feature_indices)
+                                   categorical_feature_indices, n_jobs)
 
 
 class RandomForestClassifier(SklearnClassifier):
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         from sklearn.ensemble import RandomForestClassifier
         SklearnClassifier.__init__(self, train_params, RandomForestClassifier, subsample_features_rate,
-                                   subsample_features_indices, categorical_feature_indices)
+                                   subsample_features_indices, categorical_feature_indices, n_jobs)
 
 
 class GradientBoostingClassifier(SklearnClassifier):
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         from sklearn.ensemble import GradientBoostingClassifier
         SklearnClassifier.__init__(self, train_params, GradientBoostingClassifier, subsample_features_rate,
-                                   subsample_features_indices, categorical_feature_indices)
+                                   subsample_features_indices, categorical_feature_indices, n_jobs)
 
 
 class AdaBoostClassifier(SklearnClassifier):
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         from sklearn.ensemble import AdaBoostClassifier
         SklearnClassifier.__init__(self, train_params, AdaBoostClassifier, subsample_features_rate,
-                                   subsample_features_indices, categorical_feature_indices)
+                                   subsample_features_indices, categorical_feature_indices, n_jobs)
 
 
 class BaggingClassifier(SklearnClassifier):
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         from sklearn.ensemble import BaggingClassifier
         SklearnClassifier.__init__(self, train_params, BaggingClassifier, subsample_features_rate,
-                                   subsample_features_indices, categorical_feature_indices)
+                                   subsample_features_indices, categorical_feature_indices, n_jobs)
 
 
 class LogisticRegression(SklearnClassifier):
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         from sklearn.linear_model import LogisticRegression
         SklearnClassifier.__init__(self, train_params, LogisticRegression, subsample_features_rate,
-                                   subsample_features_indices, categorical_feature_indices)
+                                   subsample_features_indices, categorical_feature_indices, n_jobs)
 
 
 class NaiveBayesClassifier(SklearnClassifier):
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         from sklearn.naive_bayes import GaussianNB
         SklearnClassifier.__init__(self, train_params, GaussianNB, subsample_features_rate, subsample_features_indices,
-                                   categorical_feature_indices)
+                                   categorical_feature_indices, n_jobs)
 
 
 class KFolds_Classifier_Training_Wrapper(Classifier):
@@ -243,7 +247,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
     '''
 
     def __init__(self, base_classifer=None, k_fold=5, random_state=42, subsample_features_rate=None,
-                 subsample_features_indices=None, categorical_feature_indices=None):
+                 subsample_features_indices=None, categorical_feature_indices=None, n_jobs=1):
         """
 
         :param base_classifer:
@@ -253,6 +257,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
         self.base_classifier = base_classifer
         self.k_fold = k_fold
         self.random_state = random_state
+        self.n_jobs = n_jobs
         # subsample_features_rate,subsample_features_indices,categorical_feature_indices参数向下递归传递给具体的base_classifiers
         Classifier.update_params(self, subsample_features_rate, subsample_features_indices, categorical_feature_indices)
 
@@ -269,35 +274,40 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
 
     def fit(self, train_x, train_y):
         """
-        拟合数据:切分数据并训练
+        :param train_x: 训练特征
+        :param train_y: 训练标签
         :return:
         """
-        self.train_x = train_x
-        self.train_y = train_y
-        kf = KFold(n_splits=self.k_fold, shuffle=False, random_state=self.random_state)
-        index = 0
-        for train_index, _ in kf.split(train_x):
-            X_train = train_x[train_index]
-            y_train = train_y[train_index]
-            self.extend_classifiers[index].fit(X_train, y_train)
-            index += 1
+        if self.n_jobs not in [None, 0, 1]:
+            # 并行训练
+            mpt = MultiProcessTrainer(self.n_jobs)
+            mpt.build_trainer_tree(self, train_x, train_y)
+            mpt.fit()
+        else:
+            kf = KFold(n_splits=self.k_fold, shuffle=False, random_state=self.random_state)
+            index = 0
+            for train_index, _ in kf.split(train_x):
+                X_train = train_x[train_index]
+                y_train = train_y[train_index]
+                self.extend_classifiers[index].fit(X_train, y_train)
+                index += 1
 
-    def _extract_k_fold_data_catogorical_features(self):
+    def extract_k_fold_data_catogorical_features(self, train_x):
         """
         抽取交叉分割数据后的标签分布预测结果
         :return:
         """
         catogorical_results = []
         kf = KFold(n_splits=self.k_fold, shuffle=False, random_state=self.random_state)
-        kf.get_n_splits(self.train_x)
+        kf.get_n_splits(train_x)
         index = 0
-        for _, test_index in kf.split(self.train_x):
-            X_test = self.train_x[test_index]
+        for _, test_index in kf.split(train_x):
+            X_test = train_x[test_index]
             catogorical_results.append(self.extend_classifiers[index].predict_categorical(X_test))
             index += 1
         return np.concatenate(catogorical_results, axis=0)
 
-    def _extract_k_fold_data_catogorical_proba_features(self):
+    def extract_k_fold_data_catogorical_proba_features(self, train_x):
         """
         抽取交叉分割数据后的标签概率分布预测结果
         :return:
@@ -305,8 +315,8 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
         catogorical_proba_results = []
         kf = KFold(n_splits=self.k_fold, shuffle=False, random_state=self.random_state)
         index = 0
-        for _, test_index in kf.split(self.train_x):
-            X_test = self.train_x[test_index]
+        for _, test_index in kf.split(train_x):
+            X_test = train_x[test_index]
             catogorical_proba_results.append(
                 self.extend_classifiers[index].predict_categorical_proba(X_test))
             index += 1
@@ -370,7 +380,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
 class StackingClassifier(Classifier):
     def __init__(self, base_classifiers=list(), meta_classifier=None, use_probas=True, force_cv=True, base_k_fold=5,
                  meta_k_fold=5, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
+                 categorical_feature_indices=None, n_jobs=1):
         """
         为cv训练方式提供更好的支持
 
@@ -385,8 +395,7 @@ class StackingClassifier(Classifier):
         self.base_classifiers = base_classifiers
         self.meta_classifier = meta_classifier
         self.use_probas = use_probas
-        self.meta_train_x = None
-        self.meta_train_y = None
+        self.n_jobs = n_jobs
         self.force_cv = force_cv
         if self.force_cv:
             for index in range(0, len(self.base_classifiers)):
@@ -399,44 +408,14 @@ class StackingClassifier(Classifier):
         # subsample_features_rate,subsample_features_indices,categorical_feature_indices参数向下递归传递给具体的base_classifiers
         Classifier.update_params(self, subsample_features_rate, subsample_features_indices, categorical_feature_indices)
 
-    def _build_base_classifier_models(self):
-        """
-        构建基分类器
-        :return:
-        """
-        for classifier in self.base_classifiers:
-            classifier.build_model()
-
-    def _build_meta_classifier_model(self):
-        """
-        构建元分类器
-        :return:
-        """
-        self.meta_classifier.build_model()
-
     def build_model(self):
         """
         构建全部分类器
         :return:
         """
-        self._build_base_classifier_models()
-        self._build_meta_classifier_model()
-
-    def _fit_base_classifiers(self, train_x, train_y):
-        """
-        训练基分类器
-        :return:
-        """
         for classifier in self.base_classifiers:
-            classifier.fit(train_x, train_y)
-
-    def _fit_meta_classifier(self):
-        """
-        训练元分类器
-        :return:
-
-        """
-        self.meta_classifier.fit(self.meta_train_x, self.meta_train_y)
+            classifier.build_model()
+        self.meta_classifier.build_model()
 
     def fit(self, train_x, train_y):
         """
@@ -445,15 +424,23 @@ class StackingClassifier(Classifier):
         :param train_y:
         :return:
         """
-        self._fit_base_classifiers(train_x, train_y)
-        if self.use_probas:
-            self.meta_train_x = self._get_base_classifier_training_categorical_proba(train_x)
+        if self.n_jobs not in [None, 0, 1]:
+            # 并行训练
+            mpt = MultiProcessTrainer(self.n_jobs)
+            mpt.build_trainer_tree(self, train_x, train_y)
+            mpt.fit()
         else:
-            self.meta_train_x = self._get_base_classifier_training_categorical(train_x)
-        self.meta_train_y = train_y
-        self._fit_meta_classifier()
+            for classifier in self.base_classifiers:
+                classifier.fit(train_x, train_y)
 
-    def _get_base_classifier_training_categorical_proba(self, train_x):
+            if self.use_probas:
+                meta_train_x = self.get_base_classifier_training_categorical_proba(train_x)
+            else:
+                meta_train_x = self.get_base_classifier_training_categorical(train_x)
+
+            self.meta_classifier.fit(meta_train_x, train_y)
+
+    def get_base_classifier_training_categorical_proba(self, train_x):
         """
         获取基分类器的训练数据
         :return:
@@ -461,13 +448,14 @@ class StackingClassifier(Classifier):
         _all_categorical_probas = []
         for classifier in self.base_classifiers:
             try:
-                current_category_labels = classifier._extract_k_fold_data_catogorical_proba_features()  # 使用KFolds_Training_wrapper包装过的分类器会调用该api
+                current_category_labels = classifier.extract_k_fold_data_catogorical_proba_features(
+                    train_x)  # 使用KFolds_Training_wrapper包装过的分类器会调用该api
             except:
                 current_category_labels = classifier.predict_categorical_proba(train_x)
             _all_categorical_probas.append(current_category_labels)
         return np.concatenate(_all_categorical_probas, axis=-1)
 
-    def _get_base_classifier_training_categorical(self, train_x):
+    def get_base_classifier_training_categorical(self, train_x):
         """
         获取基分类器的训练数据
         :return:
@@ -475,13 +463,14 @@ class StackingClassifier(Classifier):
         _all_categorical_labels = []
         for classifier in self.base_classifiers:
             try:
-                current_category_labels = classifier._extract_k_fold_data_catogorical_features()  # 使用KFolds_Training_wrapper包装过的分类器会调用该api
+                current_category_labels = classifier.extract_k_fold_data_catogorical_features(
+                    train_x)  # 使用KFolds_Training_wrapper包装过的分类器会调用该api
             except:
                 current_category_labels = classifier.predict_categorical(train_x)
             _all_categorical_labels.append(current_category_labels)
         return np.concatenate(_all_categorical_labels, axis=-1)
 
-    def _combine_base_classifier_predict_categorical(self, test_x=None):
+    def combine_base_classifier_predict_categorical(self, test_x=None):
         """
         基分类器预测标签分布的组合
         :param test_x:
@@ -490,7 +479,7 @@ class StackingClassifier(Classifier):
         _all_categorical_labels = [classifier.predict_categorical(test_x) for classifier in self.base_classifiers]
         return np.concatenate(_all_categorical_labels, axis=-1)
 
-    def _combine_base_classifier_predict_categorical_proba(self, test_x=None):
+    def combine_base_classifier_predict_categorical_proba(self, test_x=None):
         """
         基分类器预测标签概率分布的组合
         :param test_x:
@@ -505,9 +494,9 @@ class StackingClassifier(Classifier):
         :param test_x:
         :return:
         """
-        return self.meta_classifier.predict(self._combine_base_classifier_predict_categorical_proba(
+        return self.meta_classifier.predict(self.combine_base_classifier_predict_categorical_proba(
             test_x)) if self.use_probas else self.meta_classifier.predict(
-            self._combine_base_classifier_predict_categorical(test_x))
+            self.combine_base_classifier_predict_categorical(test_x))
 
     def predict_categorical(self, test_x):
         """
@@ -515,9 +504,9 @@ class StackingClassifier(Classifier):
         :param test_x:
         :return:[0,0,1,0,...]
         """
-        return self.meta_classifier.predict_categorical(self._combine_base_classifier_predict_categorical_proba(
+        return self.meta_classifier.predict_categorical(self.combine_base_classifier_predict_categorical_proba(
             test_x)) if self.use_probas else self.meta_classifier.predict_categorical(
-            self._combine_base_classifier_predict_categorical(test_x))
+            self.combine_base_classifier_predict_categorical(test_x))
 
     def predict_proba(self, test_x):
         """
@@ -525,9 +514,9 @@ class StackingClassifier(Classifier):
         :param test_x:
         :return:
         """
-        return self.meta_classifier.predict_proba(self._combine_base_classifier_predict_categorical_proba(
+        return self.meta_classifier.predict_proba(self.combine_base_classifier_predict_categorical_proba(
             test_x)) if self.use_probas else self.meta_classifier.predict_proba(
-            self._combine_base_classifier_predict_categorical(test_x))
+            self.combine_base_classifier_predict_categorical(test_x))
 
     def predict_categorical_proba(self, test_x):
         """
@@ -535,9 +524,9 @@ class StackingClassifier(Classifier):
         :param test_x:
         :return:
         """
-        return self.meta_classifier.predict_categorical_proba(self._combine_base_classifier_predict_categorical_proba(
+        return self.meta_classifier.predict_categorical_proba(self.combine_base_classifier_predict_categorical_proba(
             test_x)) if self.use_probas else self.meta_classifier.predict_categorical_proba(
-            self._combine_base_classifier_predict_categorical(test_x))
+            self.combine_base_classifier_predict_categorical(test_x))
 
 
 '''
@@ -711,3 +700,159 @@ class CatBoostClassifier(SklearnClassifier):
             return probas
         else:
             return np.asarray([[1 - proba, proba] for proba in probas])
+
+
+'''
+训练树结构，进行多进程训练的节点结构
+'''
+
+
+class TrainerNode(object):
+    def __init__(self, classifier=None, train_x=None, train_y=None, if_stacking=False):
+        self.classifier = classifier
+        self.train_x = train_x
+        self.train_y = train_y
+        self.if_stacking = if_stacking
+        self.children_nodes = []
+
+    def train(self):
+        if self.if_stacking is False:
+            self.classifier.fit(self.train_x, self.train_y)
+        else:
+            # 计算meta_train_x
+            if self.classifier.use_probas:
+                meta_train_x = self.classifier.get_base_classifier_training_categorical_proba(self.train_x)
+            else:
+                meta_train_x = self.classifier.get_base_classifier_training_categorical(self.train_x)
+
+            self.classifier.meta_classifier.fit(meta_train_x, self.train_y)
+
+
+'''
+协助模型进行多进程训练
+'''
+
+
+class MultiProcessTrainer(object):
+    def __init__(self, n_jobs):
+        self.n_jobs = n_jobs
+
+    '''
+    构建训练树结构
+    '''
+
+    def build_trainer_tree(self, classifier, train_x, train_y):
+        """
+        :param classifier: 当前分类器
+        :param train_x: 训练特征
+        :param train_y: 训练标签
+        :return:
+        """
+        # 创建空根节点
+        self.root_node = TrainerNode(None, None, None)
+
+        # 递归创建子节点
+        if classifier.__class__.__name__ == 'StackingClassifier':
+            self.build_stacking_node(self.root_node, classifier, train_x, train_y)
+        elif classifier.__class__.__name__ == 'KFolds_Classifier_Training_Wrapper':
+            self.build_cv_node(self.root_node, classifier, train_x, train_y)
+        else:
+            self.build_normal_node(self.root_node, classifier, train_x, train_y)
+
+    '''
+    构建stacking树节点
+    '''
+
+    def build_stacking_node(self, parent_node, current_classifier, X_train, y_train):
+        stacking_node = TrainerNode(current_classifier, train_x=X_train, train_y=y_train,
+                                    if_stacking=True)
+        parent_node.children_nodes.append(stacking_node)
+        # 构建stacking的子节点
+        for child_classifier in current_classifier.base_classifiers:
+            if child_classifier.__class__.__name__ == 'StackingClassifier':
+                self.build_stacking_node(stacking_node, child_classifier, X_train, y_train)
+            elif child_classifier.__class__.__name__ == 'KFolds_Classifier_Training_Wrapper':
+                self.build_cv_node(stacking_node, child_classifier, X_train, y_train)
+            else:
+                self.build_normal_node(stacking_node, child_classifier, X_train, y_train)
+
+    '''
+    构建cv树节点
+    '''
+
+    def build_cv_node(self, parent_node, current_classifier, train_x, train_y):
+        kf = KFold(n_splits=current_classifier.k_fold, shuffle=False, random_state=current_classifier.random_state)
+        index = 0
+        for train_index, _ in kf.split(train_x):
+            X_train = train_x[train_index]
+            y_train = train_y[train_index]
+            if current_classifier.extend_classifiers[index].__class__.__name__ == 'StackingClassifier':
+                self.build_stacking_node(parent_node, current_classifier.extend_classifiers[index], X_train, y_train)
+            elif current_classifier.extend_classifiers[
+                index].__class__.__name__ == 'KFolds_Classifier_Training_Wrapper':
+                self.build_cv_node(parent_node, current_classifier.extend_classifiers[index], X_train, y_train)
+            else:
+                self.build_normal_node(parent_node, current_classifier.extend_classifiers[index], X_train, y_train)
+            index += 1
+
+    '''
+    构建normal树节点
+    '''
+
+    def build_normal_node(self, parent_node, current_classifier, train_x, train_y):
+        normal_node = TrainerNode(classifier=current_classifier, train_x=train_x, train_y=train_y, if_stacking=False)
+        parent_node.children_nodes.append(normal_node)
+
+    '''
+    并行训练模型
+    '''
+
+    def fit(self):
+        def trainer_fit(node):
+            node.train()
+
+        if self.n_jobs == -1:
+            max_cpu_count = cpu_count()
+        else:
+            max_cpu_count = min(cpu_count(), self.n_jobs)
+
+        # 构建训练的层次结构索引
+        self.trainer_level_dict = {}
+
+        # 检索层次结构
+        self.search_trainer_level(1, self.root_node)
+
+        # 多线程训练
+        for index in range(99, 1, -1):
+            trainers = self.trainer_level_dict.get(index)
+            if trainers is not None:
+                if platform.system() == 'Linux':
+                    # 多进程支持,linux中生效
+                    p = Pool(min(max_cpu_count, len(trainers)))
+                    for i in range(len(trainers)):
+                        p.apply_async(trainer_fit, args=(trainers[i],))
+                    p.close()
+                    p.join()
+                else:
+                    # 多线程支持,windows中生效
+                    tasks = []
+                    for i in range(len(trainers)):
+                        task = threading.Thread(target=trainer_fit, args=(trainers[i],))
+                        task.start()
+                        tasks.append(task)
+                    for task in tasks:
+                        task.join()
+
+    '''
+    检索训练器的层次结构
+    '''
+
+    def search_trainer_level(self, current_level, current_node):
+        if self.trainer_level_dict.get(current_level) is None:
+            self.trainer_level_dict[current_level] = [current_node]
+        else:
+            self.trainer_level_dict[current_level].append(current_node)
+
+        if len(current_node.children_nodes) > 0:
+            for children_node in current_node.children_nodes:
+                self.search_trainer_level(current_level + 1, children_node)

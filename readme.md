@@ -2,7 +2,8 @@
 ### 特点
 （1）方便扩展，比如扩展Sklearn,Keras,CatBoost等工具（只需继承stacking_classifier中的Classifier类，并实现相应方法即可）；  
 （2）可以构建很深，很复杂的stacking结构  
-（3）支持离散变量（为了方便lightgbm,catboost）
+（3）支持离散变量（为了方便lightgbm,catboost）  
+（4）支持并行/并发训练 
 
 接下来，我在手写数值识别上演示api使用示例：  
 
@@ -22,24 +23,24 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.7, random_
 
 
 ```python
-class AdaBoostClassifier(SklearnClassifier):#SklearnClassifier是Classifier的子类
+class LogisticRegression(SklearnClassifier):
     def __init__(self, train_params=None, subsample_features_rate=None, subsample_features_indices=None,
-                 categorical_feature_indices=None):
-        from sklearn.ensemble import AdaBoostClassifier
-        SklearnClassifier.__init__(self, train_params, AdaBoostClassifier, subsample_features_rate,
-                                   subsample_features_indices, categorical_feature_indices)
+                 categorical_feature_indices=None, n_jobs=1):
+        from sklearn.linear_model import LogisticRegression
+        SklearnClassifier.__init__(self, train_params, LogisticRegression, subsample_features_rate,
+                                   subsample_features_indices, categorical_feature_indices, n_jobs)
 ```
 
 
 ```python
-classifier = AdaBoostClassifier()
+classifier = LogisticRegression()
 classifier.build_model()
 classifier.fit(X_train, y_train)
 p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.16511852016226553
+    0.9454545086848583
     
 
 ### 二.KFolds_Classifier_Training_Wrapper包装器的使用
@@ -55,7 +56,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9310675399372144
+    0.9364765325701125
     
 
 
@@ -69,7 +70,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9384517951950961
+    0.9403683409907246
     
 
 ### 三.StackingClassifier分类器的使用
@@ -93,7 +94,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9131632832074115
+    0.9286341275747775
     
 
 
@@ -122,7 +123,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9574818260465839
+    0.9566932316459729
     
 
 ### 四.随机/指定选择训练和预测的feature
@@ -153,7 +154,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9529487800427022
+    0.9568685122123126
     
 
 ### 五.支持离散变量的输入
@@ -218,7 +219,7 @@ p_test = classifier.predict(X_new_test)
 print(f1_score(y_new_test, p_test, average='macro'))
 ```
 
-    0.956272924068133
+    0.952295719121581
     
 
 ### 六.超参设置
@@ -250,7 +251,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9550316262302762
+    0.9551347109139192
     
 
 ### 七.自定义分类器
@@ -361,21 +362,54 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9560193034240653
+    0.9552219914166459
     
 
-### 八.模型保存与加载
+### 八.并行/并发训练
+在Linux中采用多进程并行的方式训练，在Windows中采用多线程并发的方式训练，目前仅在Windows中做过简单测试，能比串行训练提速70%+左右（视具体Stacking结构的不同，提速效率也不一样，不建议将meta_classifier定义为复杂的结构，这部分没有做过多优化），使用方式很简单，在最顶层设置```n_jobs=-1```即可，该模块后面还会持续优化...
+
+
+```python
+classifier = StackingClassifier(
+    base_classifiers=[
+        RandomForestClassifier(subsample_features_indices=[1,4,7,8],train_params={'n_estimators':200}),
+        AdaBoostClassifier(subsample_features_rate=0.1),
+        LogisticRegression(train_params={'penalty':'l2','C':1.0}),
+        LightGBMClassifier(),
+        CatBoostClassifier(train_params={'depth': 3, 'iterations': 50}),
+        StackingClassifier(
+            base_classifiers=[
+                LogisticRegression(train_params={'C':2.0}),
+                RandomForestClassifier(),
+            ],
+            meta_classifier=GradientBoostingClassifier(),
+        )
+    ],
+    meta_classifier=LogisticRegression(),
+    subsample_features_rate=0.5,
+    n_jobs=-1#这里
+)
+classifier.build_model()
+classifier.fit(train_x=X_train, train_y=y_train)
+p_test = classifier.predict(X_test)
+print(f1_score(y_test, p_test, average='macro'))
+```
+
+    0.9576968080725516
+    
+
+### 九.模型保存与加载
 
 
 ```python
 #保存
-classifier.save_model('./classifier_model/stacking.model')
+classifier.save_model('stacking.model')
 ```
 
 
 ```python
 #加载
-new_classifier=Classifier.load_model('./classifier_model/stacking.model')
+new_classifier=Classifier.load_model('stacking.model')#注意是Classifier类，不是classifier对象
 ```
 
 
@@ -384,10 +418,10 @@ p_test = new_classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9560193034240653
+    0.9576968080725516
     
 
-### 八.回归
+### 十.回归
 回归的操作与Classifier类似，不再赘述，下面列一下对应关系：  
 stacking_classifier->stacking_regressor   
 Classifier->Regressor  
@@ -395,4 +429,4 @@ SklearnClassifier->SklearnRegressor
 KFolds_Classifier_Training_Wrapper->KFolds_Regressor_Training_Wrapper  
 StackingClassifier->StackingRegressor  
 
-```subsample_features_rate,subsample_features_indices,categorical_feature_indices```的相关内容还为在回归中实现，后续更新...
+```subsample_features_rate,subsample_features_indices,categorical_feature_indices,n_jobs```的相关内容还未在回归中实现，后续更新...
