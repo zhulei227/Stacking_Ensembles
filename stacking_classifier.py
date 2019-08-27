@@ -3,13 +3,71 @@ from multiprocessing import Pool, cpu_count
 import threading
 import numpy as np
 import pickle
-import utils
 import copy
 import random
 import platform
 import warnings
 
 warnings.filterwarnings("ignore")
+
+'''
+常用函数
+'''
+
+'''
+类别标签转one-hot
+'''
+
+
+def to_categorical(y, num_classes=None, dtype='float32'):
+    # copy from keras
+    y = np.array(y, dtype='int')
+    input_shape = y.shape
+    if input_shape and input_shape[-1] == 1 and len(input_shape) > 1:
+        input_shape = tuple(input_shape[:-1])
+    y = y.ravel()
+    if not num_classes:
+        num_classes = np.max(y) + 1
+    n = y.shape[0]
+    categorical = np.zeros((n, num_classes), dtype=dtype)
+    categorical[np.arange(n), y] = 1
+    output_shape = input_shape + (num_classes,)
+    categorical = np.reshape(categorical, output_shape)
+    return categorical
+
+
+'''
+保证输入数据类型为numpy
+'''
+
+
+def force2ndarray(fn):
+    def clean_data(*args):
+        if args[1].__class__.__name__ == 'DataFrame':
+            inputs_0 = args[1].values
+        elif args[1].__class__.__name__ == 'list':
+            inputs_0 = np.asarray(args[1])
+        elif args[1].__class__.__name__ == 'ndarray':
+            inputs_0 = args[1]
+        else:
+            raise RuntimeError('未知数据类型:', args[1].__class__.__name__)
+
+        if len(args) == 3:
+            if args[2].__class__.__name__ == 'Series':
+                inputs_1 = args[2].values
+            elif args[2].__class__.__name__ == 'list':
+                inputs_1 = np.asarray(args[2])
+            elif args[2].__class__.__name__ == 'ndarray':
+                inputs_1 = args[2]
+            else:
+                raise RuntimeError('未知数据类型:', args[2].__class__.__name__)
+        if len(args) == 2:
+            return fn(args[0], inputs_0)
+        else:
+            return fn(args[0], inputs_0, inputs_1)
+
+    return clean_data
+
 
 """
 分类器接口
@@ -158,20 +216,25 @@ class SklearnClassifier(Classifier):
     def build_model(self):
         self.classifier_model = self.classifier_class(**self.train_params)
 
+    @force2ndarray
     def fit(self, train_x, train_y):
 
         self.class_num = len(set(train_y))
         self.classifier_model.fit(self.reshape_features(train_x).astype('float64'), train_y)
 
+    @force2ndarray
     def predict(self, test_x):
         return self.classifier_model.predict(self.reshape_features(test_x))
 
+    @force2ndarray
     def predict_categorical(self, test_x):
-        return utils.to_categorical(self.predict(test_x), self.class_num)
+        return to_categorical(self.predict(test_x), self.class_num)
 
+    @force2ndarray
     def predict_proba(self, test_x):
         return self.classifier_model.predict_proba(self.reshape_features(test_x).astype('float64'))
 
+    @force2ndarray
     def predict_categorical_proba(self, test_x):
         probas = self.classifier_model.predict_proba(self.reshape_features(test_x).astype('float64'))
         _, col = probas.shape
@@ -272,6 +335,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
             new_classifier.build_model()
             self.extend_classifiers.append(new_classifier)
 
+    @force2ndarray
     def fit(self, train_x, train_y):
         """
         :param train_x: 训练特征
@@ -292,6 +356,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
                 self.extend_classifiers[index].fit(X_train, y_train)
                 index += 1
 
+    @force2ndarray
     def extract_k_fold_data_catogorical_features(self, train_x):
         """
         抽取交叉分割数据后的标签分布预测结果
@@ -307,6 +372,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
             index += 1
         return np.concatenate(catogorical_results, axis=0)
 
+    @force2ndarray
     def extract_k_fold_data_catogorical_proba_features(self, train_x):
         """
         抽取交叉分割数据后的标签概率分布预测结果
@@ -322,6 +388,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
             index += 1
         return np.concatenate(catogorical_proba_results, axis=0)
 
+    @force2ndarray
     def predict(self, test_x):
         """
         预测标签
@@ -338,6 +405,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
             new_result.append(maxvalue_index)
         return new_result
 
+    @force2ndarray
     def predict_categorical(self, test_x):
         """
         预测标签分布
@@ -354,6 +422,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
             new_categorical_result[current_index][maxvalue_index] = 1
         return new_categorical_result
 
+    @force2ndarray
     def predict_proba(self, test_x):
         """
         预测标签概率(分布)
@@ -365,6 +434,7 @@ class KFolds_Classifier_Training_Wrapper(Classifier):
             proba_result += self.extend_classifiers[classifier_id].predict_proba(test_x)
         return proba_result / (len(self.extend_classifiers) * 1.0)
 
+    @force2ndarray
     def predict_categorical_proba(self, test_x):
         """
         预测标签概率分布
@@ -417,6 +487,7 @@ class StackingClassifier(Classifier):
             classifier.build_model()
         self.meta_classifier.build_model()
 
+    @force2ndarray
     def fit(self, train_x, train_y):
         """
         训练全部分类器
@@ -440,6 +511,7 @@ class StackingClassifier(Classifier):
 
             self.meta_classifier.fit(meta_train_x, train_y)
 
+    @force2ndarray
     def get_base_classifier_training_categorical_proba(self, train_x):
         """
         获取基分类器的训练数据
@@ -455,6 +527,7 @@ class StackingClassifier(Classifier):
             _all_categorical_probas.append(current_category_labels)
         return np.concatenate(_all_categorical_probas, axis=-1)
 
+    @force2ndarray
     def get_base_classifier_training_categorical(self, train_x):
         """
         获取基分类器的训练数据
@@ -470,6 +543,7 @@ class StackingClassifier(Classifier):
             _all_categorical_labels.append(current_category_labels)
         return np.concatenate(_all_categorical_labels, axis=-1)
 
+    @force2ndarray
     def combine_base_classifier_predict_categorical(self, test_x=None):
         """
         基分类器预测标签分布的组合
@@ -479,6 +553,7 @@ class StackingClassifier(Classifier):
         _all_categorical_labels = [classifier.predict_categorical(test_x) for classifier in self.base_classifiers]
         return np.concatenate(_all_categorical_labels, axis=-1)
 
+    @force2ndarray
     def combine_base_classifier_predict_categorical_proba(self, test_x=None):
         """
         基分类器预测标签概率分布的组合
@@ -488,6 +563,7 @@ class StackingClassifier(Classifier):
         _all_categorical_probas = [classifier.predict_categorical_proba(test_x) for classifier in self.base_classifiers]
         return np.concatenate(_all_categorical_probas, axis=-1)
 
+    @force2ndarray
     def predict(self, test_x):
         """
         预测标签
@@ -498,6 +574,7 @@ class StackingClassifier(Classifier):
             test_x)) if self.use_probas else self.meta_classifier.predict(
             self.combine_base_classifier_predict_categorical(test_x))
 
+    @force2ndarray
     def predict_categorical(self, test_x):
         """
         预测标签分布
@@ -508,6 +585,7 @@ class StackingClassifier(Classifier):
             test_x)) if self.use_probas else self.meta_classifier.predict_categorical(
             self.combine_base_classifier_predict_categorical(test_x))
 
+    @force2ndarray
     def predict_proba(self, test_x):
         """
         预测标签概率(分布)
@@ -518,6 +596,7 @@ class StackingClassifier(Classifier):
             test_x)) if self.use_probas else self.meta_classifier.predict_proba(
             self.combine_base_classifier_predict_categorical(test_x))
 
+    @force2ndarray
     def predict_categorical_proba(self, test_x):
         """
         预测标签概率分布
@@ -593,6 +672,7 @@ class LightGBMClassifier(SklearnClassifier):
                 axis=1)
 
     # 添加是否有离散值情况的判断
+    @force2ndarray
     def fit(self, train_x, train_y):
         self.class_num = len(set(train_y))
         reshape_train_x = self.reshape_features(train_x)
@@ -603,9 +683,11 @@ class LightGBMClassifier(SklearnClassifier):
                                       categorical_feature=self.training_categorical_feature_indices)
 
     # 允许numpy中含有字符串
+    @force2ndarray
     def predict_proba(self, test_x):
         return self.classifier_model.predict_proba(self.reshape_features(test_x))
 
+    @force2ndarray
     def predict_categorical_proba(self, test_x):
         probas = self.classifier_model.predict_proba(self.reshape_features(test_x))
         _, col = probas.shape
@@ -677,6 +759,7 @@ class CatBoostClassifier(SklearnClassifier):
                 axis=1)
 
     # 添加是否有离散值情况的判断
+    @force2ndarray
     def fit(self, train_x, train_y):
         self.class_num = len(set(train_y))
         reshape_train_x = self.reshape_features(train_x)
@@ -690,9 +773,11 @@ class CatBoostClassifier(SklearnClassifier):
                                       cat_features=self.training_categorical_feature_indices, verbose=False)
 
     # 允许numpy中含有字符串
+    @force2ndarray
     def predict_proba(self, test_x):
         return self.classifier_model.predict_proba(self.reshape_features(test_x))
 
+    @force2ndarray
     def predict_categorical_proba(self, test_x):
         probas = self.classifier_model.predict_proba(self.reshape_features(test_x))
         _, col = probas.shape
@@ -724,8 +809,14 @@ class TrainerNode(object):
                 meta_train_x = self.classifier.get_base_classifier_training_categorical_proba(self.train_x)
             else:
                 meta_train_x = self.classifier.get_base_classifier_training_categorical(self.train_x)
-
-            self.classifier.meta_classifier.fit(meta_train_x, self.train_y)
+            if self.classifier.meta_classifier.__class__.__name__ in ['KFolds_Classifier_Training_Wrapper',
+                                                                      'StackingClassifier']:
+                # 并行训练
+                mpt = MultiProcessTrainer(self.classifier.meta_classifier.n_jobs)
+                mpt.build_trainer_tree(self.classifier.meta_classifier, meta_train_x, self.train_y)
+                mpt.fit()
+            else:
+                self.classifier.meta_classifier.fit(meta_train_x, self.train_y)
 
 
 '''
@@ -826,6 +917,7 @@ class MultiProcessTrainer(object):
         for index in range(99, 1, -1):
             trainers = self.trainer_level_dict.get(index)
             if trainers is not None:
+                print(index, len(trainers))
                 if platform.system() == 'Linux':
                     # 多进程支持,linux中生效
                     p = Pool(min(max_cpu_count, len(trainers)))
