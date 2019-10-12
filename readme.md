@@ -56,7 +56,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9364765325701125
+    0.9385512218861211
     
 
 
@@ -70,7 +70,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9403683409907246
+    0.9420283908932341
     
 
 ### 三.StackingClassifier分类器的使用
@@ -94,7 +94,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9286341275747775
+    0.9368902197269791
     
 
 
@@ -123,7 +123,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9566932316459729
+    0.9573682188285277
     
 
 ### 四.随机/指定选择训练和预测的feature
@@ -154,7 +154,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9568685122123126
+    0.9527371565889977
     
 
 ### 五.支持离散变量的输入
@@ -219,7 +219,7 @@ p_test = classifier.predict(X_new_test)
 print(f1_score(y_new_test, p_test, average='macro'))
 ```
 
-    0.952295719121581
+    0.9545681753207891
     
 
 ### 六.超参设置
@@ -251,11 +251,11 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9551347109139192
+    0.9567697935352729
     
 
 ### 七.自定义分类器
-这里使用Keras实现MLP来演示，由于Keras不是Sklearn风格的api，所以需要继承Classifier类
+这里使用Keras实现MLP来演示，由于Keras不是Sklearn风格的api，所以需要继承Classifier类,下方的`@force2ndarray`注解自动将其他数据类型转换为`ndarray`格式
 
 
 ```python
@@ -295,9 +295,10 @@ class SimpleMLPClassifer(Classifier):
         self.classifier_model.compile(loss='categorical_crossentropy',
                                       optimizer='adam',
                                       metrics=['accuracy'])
-
+        
+    @force2ndarray
     def fit(self, train_x, train_y):
-        self.classifier_model.fit(x=train_x, y=utils.to_categorical(train_y, self.train_params['class_num']),
+        self.classifier_model.fit(x=train_x, y=to_categorical(train_y, self.train_params['class_num']),
                                   batch_size=self.train_params['batch_size'], epochs=self.train_params['epochs'],
                                   validation_split=self.train_params['validation_split'],
                                   shuffle=self.train_params['shuffle'],
@@ -311,7 +312,8 @@ class SimpleMLPClassifer(Classifier):
             maxvalue_index = categorical_label.index(max(categorical_label))
             new_categorical_result[index][maxvalue_index] = 1
         return new_categorical_result
-
+    
+    @force2ndarray
     def predict(self, test_x):
         p_categorical_probas = self.predict_categorical_proba(test_x)
         result = []
@@ -362,7 +364,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9552219914166459
+    0.9561217803277486
     
 
 ### 八.并行/并发训练
@@ -395,7 +397,7 @@ p_test = classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9576968080725516
+    0.9522582080173111
     
 
 ### 九.模型保存与加载
@@ -418,7 +420,7 @@ p_test = new_classifier.predict(X_test)
 print(f1_score(y_test, p_test, average='macro'))
 ```
 
-    0.9576968080725516
+    0.9522582080173111
     
 
 ### 十.回归

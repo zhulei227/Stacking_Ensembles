@@ -42,7 +42,18 @@ def to_categorical(y, num_classes=None, dtype='float32'):
 
 
 def force2ndarray(fn):
-    def clean_data(*args):
+    def clean_data(*args, **kwargs):
+        if len(kwargs) != 0:
+            append_args = []
+            keys = kwargs.keys()
+            if 'train_x' in keys:
+                append_args.append(kwargs['train_x'])
+            if 'test_x' in keys:
+                append_args.append(kwargs['test_x'])
+            if 'train_y' in keys:
+                append_args.append(kwargs['train_y'])
+            args += tuple(append_args)
+
         if args[1].__class__.__name__ == 'DataFrame':
             inputs_0 = args[1].values
         elif args[1].__class__.__name__ == 'list':
@@ -913,20 +924,36 @@ class MultiProcessTrainer(object):
         # 检索层次结构
         self.search_trainer_level(1, self.root_node)
 
-        # 多线程训练
+        # 多进程/线程训练
         for index in range(99, 1, -1):
             trainers = self.trainer_level_dict.get(index)
             if trainers is not None:
-                print(index, len(trainers))
-                if platform.system() == 'Linux':
-                    # 多进程支持,linux中生效
+                # if platform.system() == 'Linux':
+                #     # 多进程支持,linux中生效
+                #     p = Pool(min(max_cpu_count, len(trainers)))
+                #     for i in range(len(trainers)):
+                #         p.apply_async(trainer_fit, args=(trainers[i],))
+                #     p.close()
+                #     p.join()
+                # else:
+                #     # 多线程支持,windows中生效
+                #     tasks = []
+                #     for i in range(len(trainers)):
+                #         task = threading.Thread(target=trainer_fit, args=(trainers[i],))
+                #         task.start()
+                #         tasks.append(task)
+                #     for task in tasks:
+                #         task.join()
+                try:
+                    # 先尝试多进程
                     p = Pool(min(max_cpu_count, len(trainers)))
-                    for i in range(len(trainers)):
-                        p.apply_async(trainer_fit, args=(trainers[i],))
-                    p.close()
-                    p.join()
-                else:
-                    # 多线程支持,windows中生效
+                    # for i in range(len(trainers)):
+                    #     p.apply_async(trainer_fit, args=(trainers[i],))
+                    # p.close()
+                    # p.join()
+                    p.map(trainer_fit, trainers)
+                except:
+                    # 失败再尝试多线程
                     tasks = []
                     for i in range(len(trainers)):
                         task = threading.Thread(target=trainer_fit, args=(trainers[i],))
